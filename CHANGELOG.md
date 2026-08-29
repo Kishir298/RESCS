@@ -29,3 +29,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - SQLAlchemy repository implementations with conflict/not-found translation
 - Pydantic schemas with JSON-serializability validation and domain mapping
 - Test suite: domain, models, schemas, in-memory and SQLAlchemy repositories
+
+### Added - Phase 3 (database and persistence)
+
+- `db.engine`: per-backend engine construction (SQLite static pool, network
+  backends with `pool_pre_ping` and connect timeouts)
+- `db.session`: session factories and the `session_scope` transaction
+  manager (commit/rollback, domain-error translation)
+- `db.schema`: `SchemaManager` for idempotent schema creation with a
+  versioned `schema_info` table
+- `db.bootstrap`: `bootstrap_database` wiring engine, connectivity check,
+  schema and session factory from settings
+- Startup connectivity check with fail-fast `DEPENDENCY_UNAVAILABLE`
+- `RESCS_AUTO_CREATE_SCHEMA` configuration
+- Persistent file-backed storage verified by tests
+- Docs: `docs/database.md`

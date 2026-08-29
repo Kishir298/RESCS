@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     api_key: str = ""
     database_url: str = "sqlite:///rescs_dev.db"
     storage_dir: str = "rescs_storage"
+    auto_create_schema: bool = True
     request_id_header: str = "X-Request-ID"
 
     @field_validator("api_key")

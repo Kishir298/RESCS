@@ -70,6 +70,7 @@ src/rescs/
 ├── health.py          # named dependency checks + aggregate report
 ├── domain.py          # storage-agnostic domain dataclasses (RecordData, FileObjectData)
 ├── db/base.py         # SQLAlchemy declarative base
+├── db/                # engine, sessions, schema manager, bootstrap
 ├── models/            # SQLAlchemy ORM models (records, file_objects)
 ├── schemas/           # Pydantic request/response schemas + validation
 ├── interfaces/        # repository protocols (record, file object)
@@ -85,6 +86,7 @@ src/rescs/
 | --- | --- | --- |
 | 1 | Project foundation and architecture | Complete (v0.1.0) |
 | 2 | Data model and storage abstraction | Complete |
+| 3 | Database and persistence | Complete |
 | 3 | Database and persistence | Pending |
 | 4 | Storage service | Pending |
 | 5 | File storage | Pending |

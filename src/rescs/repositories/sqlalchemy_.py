@@ -1,23 +1,17 @@
 """SQLAlchemy repository backends.
 
-Persistent implementations of the repository protocols on top of a
-session factory. Each public method runs in its own transaction: commit on
-success, rollback on failure. Raw integrity violations are translated into
-domain errors so callers never see database exceptions.
+Persistent implementations of the repository protocols on top of a session
+factory. Every operation runs through :func:`rescs.db.session.session_scope`,
+which provides transaction handling and converts raw database failures into
+domain errors.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
+from rescs.db.session import SessionFactory, session_scope
 from rescs.domain import FileObjectData, Page, RecordData
 from rescs.errors import ConflictError, NotFoundError
 from rescs.models import FileObject, Record
-
-SessionFactory = Callable[[], Session]
 
 
 class SQLAlchemyRecordRepository:
@@ -25,28 +19,25 @@ class SQLAlchemyRecordRepository:
         self._session_factory = session_factory
 
     def create(self, record: RecordData) -> RecordData:
-        with self._session_factory() as session:
+        with session_scope(
+            self._session_factory,
+            "create record",
+            conflict=lambda: self._conflict(record),
+        ) as session:
             if session.get(Record, record.id) is not None:
-                raise ConflictError(
-                    "record already exists", details={"id": record.id}
-                )
+                raise ConflictError("record already exists", details={"id": record.id})
             session.add(Record.from_domain(record))
-            try:
-                session.commit()
-            except IntegrityError as exc:
-                session.rollback()
-                raise self._conflict(record) from exc
-            return record
+        return record
 
     def get(self, record_id: str) -> RecordData:
-        with self._session_factory() as session:
+        with session_scope(self._session_factory, "get record") as session:
             row = session.get(Record, record_id)
             if row is None:
                 raise NotFoundError("record not found", details={"id": record_id})
             return row.to_domain()
 
     def get_by_namespace_key(self, namespace: str, key: str) -> RecordData | None:
-        with self._session_factory() as session:
+        with session_scope(self._session_factory, "get record by namespace/key") as session:
             row = (
                 session.query(Record)
                 .filter(Record.namespace == namespace, Record.key == key)
@@ -55,7 +46,11 @@ class SQLAlchemyRecordRepository:
             return row.to_domain() if row is not None else None
 
     def update(self, record: RecordData) -> RecordData:
-        with self._session_factory() as session:
+        with session_scope(
+            self._session_factory,
+            "update record",
+            conflict=lambda: self._conflict(record),
+        ) as session:
             row = session.get(Record, record.id)
             if row is None:
                 raise NotFoundError("record not found", details={"id": record.id})
@@ -68,23 +63,17 @@ class SQLAlchemyRecordRepository:
             row.idempotency_key = record.idempotency_key
             row.etag = record.etag
             row.updated_at = record.updated_at
-            try:
-                session.commit()
-            except IntegrityError as exc:
-                session.rollback()
-                raise self._conflict(record) from exc
-            return record
+        return record
 
     def delete(self, record_id: str) -> None:
-        with self._session_factory() as session:
+        with session_scope(self._session_factory, "delete record") as session:
             row = session.get(Record, record_id)
             if row is None:
                 raise NotFoundError("record not found", details={"id": record_id})
             session.delete(row)
-            session.commit()
 
     def find_by_idempotency_key(self, idempotency_key: str) -> RecordData | None:
-        with self._session_factory() as session:
+        with session_scope(self._session_factory, "find record by idempotency key") as session:
             row = (
                 session.query(Record)
                 .filter(Record.idempotency_key == idempotency_key)
@@ -100,7 +89,7 @@ class SQLAlchemyRecordRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> Page[RecordData]:
-        with self._session_factory() as session:
+        with session_scope(self._session_factory, "list records") as session:
             query = session.query(Record)
             if namespace is not None:
                 query = query.filter(Record.namespace == namespace)
@@ -137,28 +126,31 @@ class SQLAlchemyFileObjectRepository:
         self._session_factory = session_factory
 
     def create(self, file_object: FileObjectData) -> FileObjectData:
-        with self._session_factory() as session:
+        with session_scope(
+            self._session_factory,
+            "create file object",
+            conflict=lambda: self._conflict(file_object),
+        ) as session:
             if session.get(FileObject, file_object.id) is not None:
                 raise ConflictError(
                     "file object already exists", details={"id": file_object.id}
                 )
             session.add(FileObject.from_domain(file_object))
-            try:
-                session.commit()
-            except IntegrityError as exc:
-                session.rollback()
-                raise self._conflict(file_object) from exc
-            return file_object
+        return file_object
 
     def get(self, file_id: str) -> FileObjectData:
-        with self._session_factory() as session:
+        with session_scope(self._session_factory, "get file object") as session:
             row = session.get(FileObject, file_id)
             if row is None:
                 raise NotFoundError("file not found", details={"id": file_id})
             return row.to_domain()
 
     def update(self, file_object: FileObjectData) -> FileObjectData:
-        with self._session_factory() as session:
+        with session_scope(
+            self._session_factory,
+            "update file object",
+            conflict=lambda: self._conflict(file_object),
+        ) as session:
             row = session.get(FileObject, file_object.id)
             if row is None:
                 raise NotFoundError("file not found", details={"id": file_object.id})
@@ -173,23 +165,17 @@ class SQLAlchemyFileObjectRepository:
             row.idempotency_key = file_object.idempotency_key
             row.etag = file_object.etag
             row.updated_at = file_object.updated_at
-            try:
-                session.commit()
-            except IntegrityError as exc:
-                session.rollback()
-                raise self._conflict(file_object) from exc
-            return file_object
+        return file_object
 
     def delete(self, file_id: str) -> None:
-        with self._session_factory() as session:
+        with session_scope(self._session_factory, "delete file object") as session:
             row = session.get(FileObject, file_id)
             if row is None:
                 raise NotFoundError("file not found", details={"id": file_id})
             session.delete(row)
-            session.commit()
 
     def find_by_idempotency_key(self, idempotency_key: str) -> FileObjectData | None:
-        with self._session_factory() as session:
+        with session_scope(self._session_factory, "find file by idempotency key") as session:
             row = (
                 session.query(FileObject)
                 .filter(FileObject.idempotency_key == idempotency_key)
@@ -203,7 +189,7 @@ class SQLAlchemyFileObjectRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> Page[FileObjectData]:
-        with self._session_factory() as session:
+        with session_scope(self._session_factory, "list file objects") as session:
             query = session.query(FileObject)
             if owner is not None:
                 query = query.filter(FileObject.owner == owner)
