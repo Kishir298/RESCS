@@ -27,7 +27,8 @@ def test_health_ready(client: TestClient):
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ready"
-    assert body["checks"] == {}
+    assert body["checks"]["database"] == "ok"
+    assert body["checks"]["storage"] == "ok"
 
 
 def test_health_summary(client: TestClient):
@@ -36,3 +37,4 @@ def test_health_summary(client: TestClient):
     body = response.json()
     assert body["status"] == "ok"
     assert body["service"] == "RESCS"
+    assert body["checks"]["database"] == "ok"

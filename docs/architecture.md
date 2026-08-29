@@ -63,7 +63,7 @@ No API route contains direct database logic.
 
 ```
 src/rescs/
-├── main.py            # application factory, lifespan, health endpoints
+├── main.py            # application factory, lifespan wiring
 ├── config.py          # pydantic-settings configuration (env / .env)
 ├── logging.py         # process logging foundation
 ├── errors.py          # domain error hierarchy (codes + HTTP status)
@@ -78,8 +78,7 @@ src/rescs/
 ├── repositories/      # in-memory + SQLAlchemy implementations
 ├── services/          # record + file services, composition root
 ├── storage/           # object stores (local, memory)
-├── services/          # records & files services                  (phase 4/5)
-└── api/               # routers, dependencies, error handlers     (phase 6)
+└── api/               # versioned HTTP API (v1), routers, deps, errors, health
 ```
 
 ## Development roadmap
@@ -91,10 +90,7 @@ src/rescs/
 | 3 | Database and persistence | Complete |
 | 4 | Storage service | Complete |
 | 5 | File storage | Complete |
-| 3 | Database and persistence | Pending |
-| 4 | Storage service | Pending |
-| 5 | File storage | Pending |
-| 6 | API and service integration | Pending |
+| 6 | API and service integration | Complete |
 | 7 | Security and access control | Pending |
 | 8 | Synchronization and consistency | Pending |
 | 9 | C.O.R.E. integration contract | Pending |

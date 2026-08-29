@@ -1,37 +1,62 @@
-"""RESCS application factory and HTTP entry point."""
+"""RESCS application factory and HTTP entry point.
+
+Wires configuration, logging, database, service layer, health probes,
+exception handlers and the versioned HTTP API.
+"""
 
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
+from rescs.api import API_VERSION
+from rescs.api.deps import register_health_checks
+from rescs.api.errors import register_exception_handlers
+from rescs.api.routers import files, health, records
 from rescs.config import Settings, get_settings
-from rescs.errors import RESCSError
+from rescs.db.bootstrap import Database, bootstrap_database
 from rescs.health import HealthService
 from rescs.logging import configure_logging, get_logger
+from rescs.services.factory import Services, build_services
 
 logger = get_logger(__name__)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+) -> FastAPI:
     """Build a fully configured RESCS FastAPI application."""
     if settings is None:
         settings = get_settings()
     configure_logging(settings.log_level)
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI):
+    async def lifespan(app: FastAPI):
         logger.info(
             "starting %s v%s (%s)",
             settings.app_name,
             settings.version,
             settings.environment,
         )
-        yield
-        logger.info("%s stopped", settings.app_name)
+        database: Database = bootstrap_database(settings)
+        services: Services = build_services(
+            database=database, storage_dir=settings.storage_dir
+        )
+        app.state.database = database
+        app.state.services = services
+        register_health_checks(app)
+        logger.info(
+            "connected to %s database, schema %s",
+            database.backend,
+            database.schema_version or "n/a",
+        )
+        try:
+            yield
+        finally:
+            database.engine.dispose()
+            logger.info("%s stopped", settings.app_name)
 
     app = FastAPI(
         title=settings.app_name,
@@ -43,43 +68,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.health = HealthService()
 
-    @app.exception_handler(RESCSError)
-    async def _domain_error_handler(_request: Request, exc: RESCSError) -> JSONResponse:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"error": exc.to_dict()},
-        )
+    register_exception_handlers(app)
 
     @app.get("/", tags=["meta"])
     def root() -> dict[str, Any]:
         return {
             "service": settings.app_name,
             "version": settings.version,
+            "api_version": API_VERSION,
             "docs": "/docs",
         }
 
-    @app.get("/health/live", tags=["health"])
-    def health_live() -> dict[str, Any]:
-        return {
-            "status": "alive",
-            "service": settings.app_name,
-            "version": settings.version,
-        }
-
-    @app.get("/health/ready", tags=["health"])
-    def health_ready() -> dict[str, Any]:
-        report = app.state.health.report()
-        return {
-            "status": "ready" if report["status"] == "ok" else "not_ready",
-            "checks": report["checks"],
-        }
-
-    @app.get("/health", tags=["health"])
-    def health_summary() -> dict[str, Any]:
-        return {
-            "service": settings.app_name,
-            "version": settings.version,
-            **app.state.health.report(),
-        }
+    app.include_router(health.router)
+    app.include_router(records.router, prefix=f"/api/{API_VERSION}")
+    app.include_router(files.router, prefix=f"/api/{API_VERSION}")
 
     return app

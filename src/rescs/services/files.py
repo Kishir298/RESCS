@@ -33,6 +33,10 @@ class FileService:
         self._repo = repository
         self._store = object_store
 
+    @property
+    def object_store(self) -> ObjectStore:
+        return self._store
+
     def create(
         self,
         payload: FileObjectCreate,

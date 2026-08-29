@@ -70,3 +70,20 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Blob cleanup on metadata-write failure; best-effort blob deletion on remove
 - Composition root now wires record + file services with an object store
 - Docs: `docs/storage.md`
+
+### Added - Phase 6 (API and service integration)
+
+- Versioned HTTP API under `/api/v1` (`rescs.api.routers`)
+- Record endpoints: create (201), upsert (PUT), read, patch, delete (204),
+  list and search with pagination
+- File endpoints: upload (multipart, 201), metadata read, content download,
+  delete (204), list
+- API dependencies (`api.deps`) exposing settings and the composed services
+- Real health probes wired into `/health/ready` (database connectivity,
+  object-store read/write probe)
+- Consistent `{error: {code, message, details}}` response envelope for domain
+  and validation errors (`api.errors`)
+- Application factory lifecycle: bootstrap database + services on startup,
+  dispose engine on shutdown
+- Interactive OpenAPI docs at `/docs` and `/redoc`
+- Docs: `docs/api.md`
