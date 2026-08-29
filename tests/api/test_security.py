@@ -2,35 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
-from rescs.config import Settings
-from rescs.main import create_app
+from tests.conftest import SCOPED_API_KEY
 
 RECORDS = "/api/v1/records"
-SCOPED_KEY = "scoped-tenant-key-0123456789abcdef"
-
-
-@pytest.fixture()
-def scoped_app(settings: Settings):
-    scoped_settings = Settings(
-        _env_file=None,
-        api_key=SCOPED_KEY,
-        api_key_owner="tenant-a",
-        database_url="sqlite+pysqlite:///:memory:",
-        storage_dir="rescs_test_storage",
-        environment="test",
-    )
-    return create_app(settings=scoped_settings)
-
-
-@pytest.fixture()
-def scoped_client(scoped_app):
-    with TestClient(
-        scoped_app, headers={"X-API-Key": SCOPED_KEY}
-    ) as test_client:
-        yield test_client
 
 
 def _record(owner: str = "system"):

@@ -110,3 +110,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Blob integrity verification on download (sha256 mismatch ->
   `STORAGE_ERROR` with expected/actual digests)
 - Docs: `docs/synchronization.md`
+
+### Added - Phase 9 (C.O.R.E. integration contract)
+
+- `GET /api/v1/contract`: machine-readable capability/discovery endpoint
+  (`rescs.contract`) covering auth, owner scoping, pagination, error envelope,
+  etag forms and the reserved namespace conventions
+- Reserved namespace prefixes `core.*` and `rescs.*`
+- Docs: `docs/core-integration-contract.md` (transport, envelope,
+  guarantees, C.O.R.E. conventions, database boundary)

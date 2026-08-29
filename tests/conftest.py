@@ -51,6 +51,31 @@ def client(app, settings: Settings):
         yield test_client
 
 
+SCOPED_API_KEY = "scoped-tenant-key-0123456789abcdef"
+SCOPED_OWNER = "tenant-a"
+
+
+@pytest.fixture()
+def scoped_app(settings: Settings):
+    scoped_settings = Settings(
+        _env_file=None,
+        api_key=SCOPED_API_KEY,
+        api_key_owner=SCOPED_OWNER,
+        database_url="sqlite+pysqlite:///:memory:",
+        storage_dir="rescs_test_storage",
+        environment="test",
+    )
+    return create_app(settings=scoped_settings)
+
+
+@pytest.fixture()
+def scoped_client(scoped_app):
+    with TestClient(
+        scoped_app, headers={"X-API-Key": SCOPED_API_KEY}
+    ) as test_client:
+        yield test_client
+
+
 @pytest.fixture()
 def memory_record_repo() -> InMemoryRecordRepository:
     return InMemoryRecordRepository()

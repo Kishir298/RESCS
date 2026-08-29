@@ -93,7 +93,7 @@ src/rescs/
 | 6 | API and service integration | Complete |
 | 7 | Security and access control | Complete |
 | 8 | Synchronization and consistency | Complete |
-| 9 | C.O.R.E. integration contract | Pending |
+| 9 | C.O.R.E. integration contract | Complete |
 | 10 | Observability and health | Pending |
 | 11 | Testing and integration | Pending |
 | 12 | R.I.S.A.R.M.S. readiness | Pending |

@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from rescs.api.routers import files, health, records
+from rescs.api.routers import contract, files, health, records
 
-__all__ = ["files", "health", "records"]
+__all__ = ["contract", "files", "health", "records"]
