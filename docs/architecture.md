@@ -92,7 +92,7 @@ src/rescs/
 | 5 | File storage | Complete |
 | 6 | API and service integration | Complete |
 | 7 | Security and access control | Complete |
-| 8 | Synchronization and consistency | Pending |
+| 8 | Synchronization and consistency | Complete |
 | 9 | C.O.R.E. integration contract | Pending |
 | 10 | Observability and health | Pending |
 | 11 | Testing and integration | Pending |

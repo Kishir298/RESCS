@@ -12,6 +12,7 @@ import hashlib
 import uuid
 
 from rescs.domain import FileObjectData, Page, utcnow
+from rescs.errors import PreconditionFailedError, StorageError
 from rescs.etag import file_etag
 from rescs.interfaces.object_store import ObjectStore
 from rescs.interfaces.repository import FileObjectRepository
@@ -81,14 +82,41 @@ class FileService:
         return self._repo.get(file_id)
 
     def download(
-        self, file_id: str, *, actor: str = "system"
+        self, file_id: str, *, actor: str = "system", verify: bool = True
     ) -> tuple[FileObjectData, bytes]:
         file_object = self._repo.get(file_id)
         data = self._store.get(file_object.storage_path)
+        if verify:
+            actual = hashlib.sha256(data).hexdigest()
+            if actual != file_object.sha256:
+                raise StorageError(
+                    "blob integrity check failed; stored bytes do not match metadata",
+                    details={
+                        "id": file_id,
+                        "expected_sha256": file_object.sha256,
+                        "actual_sha256": actual,
+                    },
+                )
         return file_object, data
 
-    def delete(self, file_id: str, *, actor: str = "system") -> None:
-        self._repo.get(file_id)
+    def delete(
+        self,
+        file_id: str,
+        *,
+        actor: str = "system",
+        expected_etag: str | None = None,
+    ) -> None:
+        file_object = self._repo.get(file_id)
+        if expected_etag is not None and file_object.etag != expected_etag:
+            raise PreconditionFailedError(
+                "etag does not match current file state",
+                details={
+                    "id": file_id,
+                    "expected_etag": expected_etag,
+                    "current_etag": file_object.etag,
+                    "version": file_object.version,
+                },
+            )
         self._repo.delete(file_id)
         try:
             self._store.delete(file_id)

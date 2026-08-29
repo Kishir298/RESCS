@@ -11,13 +11,26 @@ from __future__ import annotations
 import uuid
 
 from rescs.domain import Page, RecordData, utcnow
-from rescs.errors import InvalidRequestError
+from rescs.errors import InvalidRequestError, PreconditionFailedError
 from rescs.etag import content_etag
 from rescs.interfaces.repository import RecordRepository
 from rescs.schemas.record import RecordCreate, RecordUpdate
 from rescs.services.utils import clamp_pagination
 
 DEFAULT_LIMIT = 100
+
+
+def _check_etag(existing: RecordData, expected_etag: str | None) -> None:
+    if expected_etag is not None and existing.etag != expected_etag:
+        raise PreconditionFailedError(
+            "etag does not match current record state",
+            details={
+                "id": existing.id,
+                "expected_etag": expected_etag,
+                "current_etag": existing.etag,
+                "version": existing.version,
+            },
+        )
 
 
 class RecordService:
@@ -45,11 +58,23 @@ class RecordService:
         )
         return self._repo.create(record)
 
-    def put(self, payload: RecordCreate, *, actor: str = "system") -> RecordData:
+    def put(
+        self,
+        payload: RecordCreate,
+        *,
+        actor: str = "system",
+        expected_etag: str | None = None,
+    ) -> RecordData:
         """Create or replace the record identified by (namespace, key)."""
         existing = self._repo.get_by_namespace_key(payload.namespace, payload.key)
         if existing is None:
+            if expected_etag is not None:
+                raise PreconditionFailedError(
+                    "record does not exist; cannot match If-Match",
+                    details={"namespace": payload.namespace, "key": payload.key},
+                )
             return self.create(payload, actor=actor)
+        _check_etag(existing, expected_etag)
         updated = RecordData(
             id=existing.id,
             namespace=payload.namespace,
@@ -69,9 +94,15 @@ class RecordService:
         return self._repo.get(record_id)
 
     def update(
-        self, record_id: str, payload: RecordUpdate, *, actor: str = "system"
+        self,
+        record_id: str,
+        payload: RecordUpdate,
+        *,
+        actor: str = "system",
+        expected_etag: str | None = None,
     ) -> RecordData:
         existing = self._repo.get(record_id)
+        _check_etag(existing, expected_etag)
         fields = (
             payload.value,
             payload.metadata,
@@ -100,7 +131,15 @@ class RecordService:
         )
         return self._repo.update(updated)
 
-    def delete(self, record_id: str, *, actor: str = "system") -> None:
+    def delete(
+        self,
+        record_id: str,
+        *,
+        actor: str = "system",
+        expected_etag: str | None = None,
+    ) -> None:
+        existing = self._repo.get(record_id)
+        _check_etag(existing, expected_etag)
         self._repo.delete(record_id)
 
     def list(

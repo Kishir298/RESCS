@@ -99,3 +99,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   (touching another owner's resource)
 - Owner field plumbed through file uploads and all record routes
 - Test suite: authentication, scoped-owner enforcement across records
+
+### Added - Phase 8 (synchronization and consistency)
+
+- Optimistic concurrency via `If-Match` / etag precondition on record
+  `PATCH`/`PUT`/`DELETE` and file `DELETE` (`412 PRECONDITION_FAILED`)
+- RFC 9110 etag parsing (bare, quoted `"..."`, weak `W/"..."`, `*`)
+- `ETag` response header on read/create/update routes
+- Idempotent creates/upload formalized and covered by unit + API tests
+- Blob integrity verification on download (sha256 mismatch ->
+  `STORAGE_ERROR` with expected/actual digests)
+- Docs: `docs/synchronization.md`

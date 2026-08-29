@@ -22,6 +22,24 @@ def get_services(request: Request) -> Services:
     return request.app.state.services
 
 
+def parse_etag(header_value: str | None) -> str | None:
+    """Extract an entity tag from an ``If-Match`` style header value.
+
+    Accepts a bare entity tag (our canonical form) or the RFC 9110 quoted/
+    weak form. ``*`` and empty values map to ``None``.
+    """
+    if not header_value:
+        return None
+    value = header_value.strip()
+    if value == "*":
+        return None
+    if value.startswith("W/"):
+        value = value[2:].strip()
+    if value.startswith('"') and value.endswith('"') and len(value) >= 2:
+        return value[1:-1]
+    return value
+
+
 PROBE_KEY = "_rescs_probe"
 
 

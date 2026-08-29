@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query, Response
 
-from rescs.api.deps import get_settings, get_services
+from rescs.api.deps import get_settings, get_services, parse_etag
 from rescs.config import Settings
 from rescs.schemas.record import RecordCreate, RecordPage, RecordRead, RecordUpdate
 from rescs.security import (
@@ -58,9 +58,14 @@ def _page(
     )
 
 
+def _apply_etag_header(response: Response, record) -> None:
+    response.headers["ETag"] = record.etag
+
+
 @router.post("", status_code=201, response_model=RecordRead)
 def create_record(
     payload: RecordCreate,
+    response: Response,
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
@@ -68,20 +73,28 @@ def create_record(
     payload.owner = enforce_owner(
         requested=payload.owner, principal=principal, settings=settings
     )
-    return RecordRead.from_domain(services.records.create(payload))
+    record = RecordRead.from_domain(services.records.create(payload))
+    _apply_etag_header(response, record)
+    return record
 
 
 @router.put("", response_model=RecordRead, summary="Create or replace by namespace/key")
 def put_record(
     payload: RecordCreate,
+    response: Response,
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> RecordRead:
     payload.owner = enforce_owner(
         requested=payload.owner, principal=principal, settings=settings
     )
-    return RecordRead.from_domain(services.records.put(payload))
+    record = RecordRead.from_domain(
+        services.records.put(payload, expected_etag=parse_etag(if_match))
+    )
+    _apply_etag_header(response, record)
+    return record
 
 
 @router.get("", response_model=RecordPage)
@@ -140,12 +153,20 @@ def get_record(
 def update_record(
     record_id: str,
     payload: RecordUpdate,
+    response: Response,
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> RecordRead:
     _authorized_record(services, record_id, principal=principal, settings=settings)
-    return RecordRead.from_domain(services.records.update(record_id, payload))
+    record = RecordRead.from_domain(
+        services.records.update(
+            record_id, payload, expected_etag=parse_etag(if_match)
+        )
+    )
+    _apply_etag_header(response, record)
+    return record
 
 
 @router.delete("/{record_id}", status_code=204)
@@ -154,6 +175,7 @@ def delete_record(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> None:
     _authorized_record(services, record_id, principal=principal, settings=settings)
-    services.records.delete(record_id)
+    services.records.delete(record_id, expected_etag=parse_etag(if_match))

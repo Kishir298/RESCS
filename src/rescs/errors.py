@@ -60,6 +60,11 @@ class ConflictError(RESCSError):
     status_code = 409
 
 
+class PreconditionFailedError(RESCSError):
+    code = "PRECONDITION_FAILED"
+    status_code = 412
+
+
 class UnprocessableContentError(RESCSError):
     code = "UNPROCESSABLE_CONTENT"
     status_code = 422

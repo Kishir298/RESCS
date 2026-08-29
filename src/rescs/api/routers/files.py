@@ -7,9 +7,9 @@ JSON. Files are addressed by their stable id. All routes require a valid
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile
 
-from rescs.api.deps import get_settings, get_services
+from rescs.api.deps import get_settings, get_services, parse_etag
 from rescs.config import Settings
 from rescs.schemas.file_object import FileObjectCreate, FileObjectPage, FileObjectRead
 from rescs.security import (
@@ -126,6 +126,7 @@ def delete_file(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> None:
     _authorized_file(services, file_id, principal=principal, settings=settings)
-    services.files.delete(file_id)
+    services.files.delete(file_id, expected_etag=parse_etag(if_match))
