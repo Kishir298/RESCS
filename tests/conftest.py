@@ -16,9 +16,21 @@ os.environ.setdefault("RESCS_LOG_LEVEL", "WARNING")
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from rescs.config import Settings
+from rescs.db.base import Base
 from rescs.main import create_app
+from rescs.repositories.memory import (
+    InMemoryFileObjectRepository,
+    InMemoryRecordRepository,
+)
+from rescs.repositories.sqlalchemy_ import (
+    SQLAlchemyFileObjectRepository,
+    SQLAlchemyRecordRepository,
+)
 
 
 @pytest.fixture(scope="session")
@@ -35,3 +47,36 @@ def app(settings: Settings):
 def client(app):
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture()
+def memory_record_repo() -> InMemoryRecordRepository:
+    return InMemoryRecordRepository()
+
+
+@pytest.fixture()
+def memory_file_repo() -> InMemoryFileObjectRepository:
+    return InMemoryFileObjectRepository()
+
+
+@pytest.fixture()
+def sqlite_session_factory():
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    yield factory
+    engine.dispose()
+
+
+@pytest.fixture()
+def sqlalchemy_record_repo(sqlite_session_factory) -> SQLAlchemyRecordRepository:
+    return SQLAlchemyRecordRepository(sqlite_session_factory)
+
+
+@pytest.fixture()
+def sqlalchemy_file_repo(sqlite_session_factory) -> SQLAlchemyFileObjectRepository:
+    return SQLAlchemyFileObjectRepository(sqlite_session_factory)

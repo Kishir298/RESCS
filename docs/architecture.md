@@ -68,11 +68,12 @@ src/rescs/
 ├── logging.py         # process logging foundation
 ├── errors.py          # domain error hierarchy (codes + HTTP status)
 ├── health.py          # named dependency checks + aggregate report
-├── db/                # engine, session, declarative base        (phase 3)
-├── models/            # SQLAlchemy ORM models                     (phase 2)
-├── schemas/           # Pydantic request/response schemas         (phase 2)
-├── interfaces/        # repository & object-store Protocols       (phase 2)
-├── repositories/      # in-memory + SQLAlchemy implementations    (phase 2)
+├── domain.py          # storage-agnostic domain dataclasses (RecordData, FileObjectData)
+├── db/base.py         # SQLAlchemy declarative base
+├── models/            # SQLAlchemy ORM models (records, file_objects)
+├── schemas/           # Pydantic request/response schemas + validation
+├── interfaces/        # repository protocols (record, file object)
+├── repositories/      # in-memory + SQLAlchemy implementations
 ├── storage/           # object-store implementation               (phase 5)
 ├── services/          # records & files services                  (phase 4/5)
 └── api/               # routers, dependencies, error handlers     (phase 6)
@@ -83,7 +84,7 @@ src/rescs/
 | Phase | Focus | Status |
 | --- | --- | --- |
 | 1 | Project foundation and architecture | Complete (v0.1.0) |
-| 2 | Data model and storage abstraction | Pending |
+| 2 | Data model and storage abstraction | Complete |
 | 3 | Database and persistence | Pending |
 | 4 | Storage service | Pending |
 | 5 | File storage | Pending |

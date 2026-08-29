@@ -18,3 +18,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Project metadata (`pyproject.toml`), pinned dependencies, `.gitignore`,
   `.env.example`
 - Test suite: configuration, errors, health service, health API
+
+### Added - Phase 2 (data model and storage abstraction)
+
+- Storage-agnostic domain dataclasses (`RecordData`, `FileObjectData`)
+- SQLAlchemy ORM models (`records`, `file_objects`) with unique constraints,
+  timestamps, versions and idempotency keys
+- Repository protocols decoupling services from database backends
+- In-memory repository implementations (deterministic test doubles)
+- SQLAlchemy repository implementations with conflict/not-found translation
+- Pydantic schemas with JSON-serializability validation and domain mapping
+- Test suite: domain, models, schemas, in-memory and SQLAlchemy repositories
