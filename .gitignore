@@ -1,0 +1,29 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Local configuration and secrets
+.env
+
+# Local data
+rescs_dev.db
+rescs_dev.db-*
+rescs_storage/
+rescs_test_storage/
+
+# OS files
+Thumbs.db
+.DS_Store
