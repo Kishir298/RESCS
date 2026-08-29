@@ -8,6 +8,8 @@ domain errors.
 
 from __future__ import annotations
 
+from sqlalchemy import String, cast, or_
+
 from rescs.db.session import SessionFactory, session_scope
 from rescs.domain import FileObjectData, Page, RecordData
 from rescs.errors import ConflictError, NotFoundError
@@ -100,6 +102,37 @@ class SQLAlchemyRecordRepository:
             total = query.count()
             rows = (
                 query.order_by(Record.updated_at.asc(), Record.id.asc())
+                .limit(limit)
+                .offset(offset)
+                .all()
+            )
+            items = [row.to_domain() for row in rows]
+            return Page(items=items, total=total, limit=limit, offset=offset)
+
+    def search(
+        self,
+        query: str,
+        namespace: str | None = None,
+        owner: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Page[RecordData]:
+        pattern = f"%{query}%"
+        with session_scope(self._session_factory, "search records") as session:
+            base = session.query(Record)
+            if namespace is not None:
+                base = base.filter(Record.namespace == namespace)
+            if owner is not None:
+                base = base.filter(Record.owner == owner)
+            condition = or_(
+                Record.key.ilike(pattern),
+                cast(Record.meta, String).ilike(pattern),
+                cast(Record.value, String).ilike(pattern),
+            )
+            matching = base.filter(condition)
+            total = matching.count()
+            rows = (
+                matching.order_by(Record.updated_at.asc(), Record.id.asc())
                 .limit(limit)
                 .offset(offset)
                 .all()

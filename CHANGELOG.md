@@ -44,3 +44,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `RESCS_AUTO_CREATE_SCHEMA` configuration
 - Persistent file-backed storage verified by tests
 - Docs: `docs/database.md`
+
+### Added - Phase 4 (storage service)
+
+- `RecordService` operations: create, put (upsert), get, update, delete,
+  list, search
+- Idempotent creates via `idempotency_key`
+- Version tracking, ETag computation (`rescs.etag`) and `updated_at` bumps
+  on every modification
+- Repository `search` across key, value and metadata (portable across
+  SQLite/PostgreSQL and in-memory backends)
+- Pagination clamping in the service layer
+- Service composition root (`build_services`) for memory and persistent
+  backends
+- Test suite: record service behaviour, factory wiring

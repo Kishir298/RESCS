@@ -7,6 +7,7 @@ exit; they are never used for real persistence.
 
 from __future__ import annotations
 
+import json
 import threading
 from typing import Generic, TypeVar
 
@@ -151,6 +152,31 @@ class InMemoryRecordRepository:
             and (key_prefix is None or r.key.startswith(key_prefix))
             and (owner is None or r.owner == owner)
         )
+        items = self._store.page(predicate, limit, offset)
+        return Page(
+            items=items, total=self._store.count(predicate), limit=limit, offset=offset
+        )
+
+    def search(
+        self,
+        query: str,
+        namespace: str | None = None,
+        owner: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Page[RecordData]:
+        needle = query.lower()
+
+        def predicate(r: RecordData) -> bool:
+            if namespace is not None and r.namespace != namespace:
+                return False
+            if owner is not None and r.owner != owner:
+                return False
+            text = json.dumps(
+                [r.value, r.metadata], sort_keys=True, default=str
+            ).lower()
+            return needle in r.key.lower() or needle in text
+
         items = self._store.page(predicate, limit, offset)
         return Page(
             items=items, total=self._store.count(predicate), limit=limit, offset=offset

@@ -35,6 +35,15 @@ class RecordRepository(Protocol):
         offset: int = 0,
     ) -> Page[RecordData]: ...
 
+    def search(
+        self,
+        query: str,
+        namespace: str | None = None,
+        owner: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Page[RecordData]: ...
+
 
 @runtime_checkable
 class FileObjectRepository(Protocol):
