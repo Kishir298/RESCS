@@ -19,6 +19,7 @@ from rescs.config import Settings, get_settings
 from rescs.db.bootstrap import Database, bootstrap_database
 from rescs.health import HealthService
 from rescs.logging import configure_logging, get_logger
+from rescs.observability import ObservabilityMiddleware
 from rescs.services.factory import Services, build_services
 
 logger = get_logger(__name__)
@@ -67,6 +68,11 @@ def create_app(
 
     app.state.settings = settings
     app.state.health = HealthService()
+
+    app.add_middleware(
+        ObservabilityMiddleware,
+        settings=settings,
+    )
 
     register_exception_handlers(app)
 

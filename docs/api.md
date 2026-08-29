@@ -12,6 +12,11 @@ and `/redoc`. Versioned under `/api/v1`.
   locked to that single owner; writes claiming a different `owner` and reads
   of another owner's resource are rejected (`401`/`403`). Otherwise the
   requester supplies `owner` freely (default `system`).
+- **Request correlation**: every HTTP request is assigned a request id
+  (`X-Request-ID`), which is echoed back on the response for tracing/audit.
+  A caller-supplied `X-Request-ID` of up to 128 characters is honoured when
+  present; otherwise one is generated. The header name is configurable via
+  `RESCS_REQUEST_ID_HEADER` (default `X-Request-ID`).
 - Requests/responses are JSON unless noted (file uploads/downloads are
   binary multipart).
 - List endpoints paginate with `limit` (1..500, default 100) and `offset`.
