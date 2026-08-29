@@ -76,8 +76,8 @@ src/rescs/
 ├── schemas/           # Pydantic request/response schemas + validation
 ├── interfaces/        # repository protocols (record, file object)
 ├── repositories/      # in-memory + SQLAlchemy implementations
-├── services/          # record service + composition root
-├── storage/           # object-store implementation               (phase 5)
+├── services/          # record + file services, composition root
+├── storage/           # object stores (local, memory)
 ├── services/          # records & files services                  (phase 4/5)
 └── api/               # routers, dependencies, error handlers     (phase 6)
 ```
@@ -90,6 +90,7 @@ src/rescs/
 | 2 | Data model and storage abstraction | Complete |
 | 3 | Database and persistence | Complete |
 | 4 | Storage service | Complete |
+| 5 | File storage | Complete |
 | 3 | Database and persistence | Pending |
 | 4 | Storage service | Pending |
 | 5 | File storage | Pending |

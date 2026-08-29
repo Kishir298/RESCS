@@ -15,13 +15,9 @@ from rescs.errors import InvalidRequestError
 from rescs.etag import content_etag
 from rescs.interfaces.repository import RecordRepository
 from rescs.schemas.record import RecordCreate, RecordUpdate
+from rescs.services.utils import clamp_pagination
 
 DEFAULT_LIMIT = 100
-MAX_LIMIT = 500
-
-
-def _clamp_pagination(limit: int, offset: int) -> tuple[int, int]:
-    return max(1, min(limit, MAX_LIMIT)), max(0, offset)
 
 
 class RecordService:
@@ -117,7 +113,7 @@ class RecordService:
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> Page[RecordData]:
-        limit, offset = _clamp_pagination(limit, offset)
+        limit, offset = clamp_pagination(limit, offset)
         return self._repo.list(
             namespace=namespace,
             key_prefix=key_prefix,
@@ -136,7 +132,7 @@ class RecordService:
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> Page[RecordData]:
-        limit, offset = _clamp_pagination(limit, offset)
+        limit, offset = clamp_pagination(limit, offset)
         return self._repo.search(
             query=query,
             namespace=namespace,

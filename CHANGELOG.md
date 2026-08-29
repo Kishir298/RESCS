@@ -58,3 +58,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Service composition root (`build_services`) for memory and persistent
   backends
 - Test suite: record service behaviour, factory wiring
+
+### Added - Phase 5 (file storage)
+
+- Object store protocol (`interfaces/object_store`) separating blobs from
+  metadata
+- `LocalObjectStore` (filesystem, atomic writes, path-traversal protection)
+  and `MemoryObjectStore` (test double)
+- `FileService`: upload, download, metadata read, delete, list
+- Content fingerprints (`sha256`), size tracking and file etags
+- Blob cleanup on metadata-write failure; best-effort blob deletion on remove
+- Composition root now wires record + file services with an object store
+- Docs: `docs/storage.md`

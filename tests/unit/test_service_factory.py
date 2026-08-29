@@ -36,3 +36,16 @@ def test_services_memory_backend():
         RecordCreate(namespace="n", key="k", value={"v": 2})
     )
     assert services.records.get(created.id).value == {"v": 2}
+
+
+def test_services_files_over_persistent_backend(tmp_path):
+    from rescs.schemas.file_object import FileObjectCreate
+
+    database = bootstrap_database(make_settings())
+    services = build_services(database=database, storage_dir=str(tmp_path / "blobs"))
+    uploaded = services.files.create(FileObjectCreate(filename="x.bin"), b"payload")
+    meta, content = services.files.download(uploaded.id)
+    assert meta.filename == "x.bin"
+    assert content == b"payload"
+    assert (tmp_path / "blobs" / uploaded.id).is_file()
+    database.engine.dispose()
