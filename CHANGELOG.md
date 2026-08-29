@@ -87,3 +87,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   dispose engine on shutdown
 - Interactive OpenAPI docs at `/docs` and `/redoc`
 - Docs: `docs/api.md`
+
+### Added - Phase 7 (security and access control)
+
+- `X-API-Key` authentication enforced on every `/api/v1` route with
+  constant-time comparison (`rescs.security`)
+- `401 UNAUTHORIZED` envelope for missing/invalid credentials
+- Owner scoping via `RESCS_API_KEY_OWNER`: single-owner lock mode forcing
+  `owner` on writes, on list filters, and authorizing reads/deletes
+- Cross-owner access rejected with `401` (claiming another owner) or `403`
+  (touching another owner's resource)
+- Owner field plumbed through file uploads and all record routes
+- Test suite: authentication, scoped-owner enforcement across records

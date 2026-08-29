@@ -5,6 +5,13 @@ and `/redoc`. Versioned under `/api/v1`.
 
 ## Convention
 
+- **Authentication**: every `/api/v1` route requires the `X-API-Key` header
+  matching the configured `RESCS_API_KEY` (min 16 chars). Health and
+  introspection endpoints (`/health*`, `/`, `/docs`) are open.
+- **Owner scoping**: when `RESCS_API_KEY_OWNER` is set, all requests are
+  locked to that single owner; writes claiming a different `owner` and reads
+  of another owner's resource are rejected (`401`/`403`). Otherwise the
+  requester supplies `owner` freely (default `system`).
 - Requests/responses are JSON unless noted (file uploads/downloads are
   binary multipart).
 - List endpoints paginate with `limit` (1..500, default 100) and `offset`.
