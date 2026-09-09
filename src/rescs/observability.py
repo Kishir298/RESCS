@@ -59,6 +59,14 @@ class ObservabilityMiddleware:
         status_code = 500
         started = time.perf_counter()
         token = request_id_var.set(request_id)
+        # Stash on the ASGI scope so ServerErrorMiddleware handlers (which run
+        # outside this middleware for generic Exception) can still propagate
+        # the correlation id even after the ContextVar is reset.
+        try:
+            scope["rescs.request_id"] = request_id
+            scope["rescs.request_id_header"] = header_name
+        except Exception:
+            pass
 
         async def send_wrapper(message):
             nonlocal status_code

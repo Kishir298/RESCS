@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 router = APIRouter(tags=["health"])
 
@@ -20,19 +21,28 @@ def health_live(request: Request) -> dict[str, Any]:
 
 
 @router.get("/health/ready")
-def health_ready(request: Request) -> dict[str, Any]:
+def health_ready(request: Request) -> JSONResponse:
     report = request.app.state.health.report()
-    return {
-        "status": "ready" if report["status"] == "ok" else "not_ready",
-        "checks": report["checks"],
-    }
+    ready = report["status"] == "ok"
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={
+            "status": "ready" if ready else "not_ready",
+            "checks": report["checks"],
+        },
+    )
 
 
 @router.get("/health")
-def health_summary(request: Request) -> dict[str, Any]:
+def health_summary(request: Request) -> JSONResponse:
     settings = request.app.state.settings
-    return {
-        "service": settings.app_name,
-        "version": settings.version,
-        **request.app.state.health.report(),
-    }
+    report = request.app.state.health.report()
+    healthy = report["status"] == "ok"
+    return JSONResponse(
+        status_code=200 if healthy else 503,
+        content={
+            "service": settings.app_name,
+            "version": settings.version,
+            **report,
+        },
+    )
