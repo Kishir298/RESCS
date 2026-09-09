@@ -11,7 +11,7 @@ import json
 import threading
 from typing import Generic, TypeVar
 
-from rescs.domain import FileObjectData, Page, RecordData
+from rescs.domain import AuditData, FileObjectData, Page, RecordData, ensure_utc, utcnow
 from rescs.errors import ConflictError, NotFoundError
 
 T = TypeVar("T", RecordData, FileObjectData)
@@ -94,6 +94,10 @@ class _InMemoryStore(Generic[T]):
                 return None
             return self._items[item_id]
 
+    def drop_natural(self, namespace: str, key: str) -> None:
+        with self._lock:
+            self._namespace_keys.pop((namespace, key), None)
+
     def find_by_idempotency_key(self, idempotency_key: str) -> T | None:
         with self._lock:
             item_id = self._idempotency.get(idempotency_key)
@@ -121,13 +125,32 @@ class InMemoryRecordRepository:
     def __init__(self) -> None:
         self._store: _InMemoryStore[RecordData] = _InMemoryStore()
 
+    @staticmethod
+    def _live(item: RecordData, now) -> bool:
+        return item.deleted_at is None and not item.is_expired(now)
+
     def create(self, record: RecordData) -> RecordData:
+        occupant = self._store.get_by_natural_key(record.namespace, record.key)
+        if occupant is not None and not self._live(occupant, utcnow()):
+            self._store.drop_natural(record.namespace, record.key)
         return self._store.create(record, record.namespace, record.key)
 
     def get(self, record_id: str) -> RecordData:
+        item = self._store.get(record_id)
+        if not self._live(item, utcnow()):
+            raise NotFoundError("record not found", details={"id": record_id})
+        return item
+
+    def get_including_deleted(self, record_id: str) -> RecordData:
         return self._store.get(record_id)
 
     def get_by_namespace_key(self, namespace: str, key: str) -> RecordData | None:
+        item = self._store.get_by_natural_key(namespace, key)
+        if item is None or not self._live(item, utcnow()):
+            return None
+        return item
+
+    def find_occupant(self, namespace: str, key: str) -> RecordData | None:
         return self._store.get_by_natural_key(namespace, key)
 
     def update(self, record: RecordData) -> RecordData:
@@ -146,16 +169,68 @@ class InMemoryRecordRepository:
         owner: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tags: list[str] | None = None,
+        created_after=None,
+        created_before=None,
+        updated_after=None,
+        updated_before=None,
+        include_deleted: bool = False,
+        include_expired: bool = False,
+    ) -> Page[RecordData]:
+        now = utcnow()
+
+        def predicate(r: RecordData) -> bool:
+            if namespace is not None and r.namespace != namespace:
+                return False
+            if key_prefix is not None and not r.key.startswith(key_prefix):
+                return False
+            if owner is not None and r.owner != owner:
+                return False
+            if tags is not None and not set(tags) <= set(r.tags):
+                return False
+            if not _in_window(r.created_at, created_after, created_before):
+                return False
+            if not _in_window(r.updated_at, updated_after, updated_before):
+                return False
+            if not include_deleted and r.deleted_at is not None:
+                return False
+            if not include_expired and r.is_expired(now):
+                return False
+            return True
+
+        items = self._store.page(predicate, limit, offset)
+        return Page(
+            items=items, total=self._store.count(predicate), limit=limit, offset=offset
+        )
+
+    def list_deleted(
+        self,
+        namespace: str | None = None,
+        owner: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> Page[RecordData]:
         predicate = lambda r: (
-            (namespace is None or r.namespace == namespace)
-            and (key_prefix is None or r.key.startswith(key_prefix))
+            r.deleted_at is not None
+            and (namespace is None or r.namespace == namespace)
             and (owner is None or r.owner == owner)
         )
         items = self._store.page(predicate, limit, offset)
         return Page(
             items=items, total=self._store.count(predicate), limit=limit, offset=offset
         )
+
+    def list_expired(self, before, limit: int = 100) -> list[RecordData]:
+        now = utcnow()
+        with self._store._lock:
+            items = [
+                item
+                for item in self._store._items.values()
+                if item.expires_at is not None
+                and ensure_utc(item.expires_at) <= ensure_utc(before)
+            ]
+            items.sort(key=lambda i: (ensure_utc(i.expires_at), i.id))
+            return items[:limit]
 
     def search(
         self,
@@ -164,13 +239,23 @@ class InMemoryRecordRepository:
         owner: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tags: list[str] | None = None,
+        include_deleted: bool = False,
+        include_expired: bool = False,
     ) -> Page[RecordData]:
         needle = query.lower()
+        now = utcnow()
 
         def predicate(r: RecordData) -> bool:
             if namespace is not None and r.namespace != namespace:
                 return False
             if owner is not None and r.owner != owner:
+                return False
+            if tags is not None and not set(tags) <= set(r.tags):
+                return False
+            if not include_deleted and r.deleted_at is not None:
+                return False
+            if not include_expired and r.is_expired(now):
                 return False
             text = json.dumps(
                 [r.value, r.metadata], sort_keys=True, default=str
@@ -182,15 +267,42 @@ class InMemoryRecordRepository:
             items=items, total=self._store.count(predicate), limit=limit, offset=offset
         )
 
+    def count_by_owner(self, owner: str, *, include_deleted: bool = False) -> int:
+        now = utcnow()
+        return self._store.count(
+            lambda r: r.owner == owner
+            and (include_deleted or r.deleted_at is None)
+            and not r.is_expired(now)
+        )
+
+
+def _in_window(value, after, before) -> bool:
+    moment = ensure_utc(value)
+    if after is not None and moment < ensure_utc(after):
+        return False
+    if before is not None and moment >= ensure_utc(before):
+        return False
+    return True
+
 
 class InMemoryFileObjectRepository:
     def __init__(self) -> None:
         self._store: _InMemoryStore[FileObjectData] = _InMemoryStore()
 
+    @staticmethod
+    def _live(item: FileObjectData, now) -> bool:
+        return item.deleted_at is None and not item.is_expired(now)
+
     def create(self, file_object: FileObjectData) -> FileObjectData:
         return self._store.create(file_object)
 
     def get(self, file_id: str) -> FileObjectData:
+        item = self._store.get(file_id)
+        if not self._live(item, utcnow()):
+            raise NotFoundError("file not found", details={"id": file_id})
+        return item
+
+    def get_including_deleted(self, file_id: str) -> FileObjectData:
         return self._store.get(file_id)
 
     def update(self, file_object: FileObjectData) -> FileObjectData:
@@ -207,9 +319,130 @@ class InMemoryFileObjectRepository:
         owner: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tags: list[str] | None = None,
+        mime_type: str | None = None,
+        size_min: int | None = None,
+        size_max: int | None = None,
+        created_after=None,
+        created_before=None,
+        updated_after=None,
+        updated_before=None,
+        include_deleted: bool = False,
+        include_expired: bool = False,
     ) -> Page[FileObjectData]:
-        predicate = lambda f: owner is None or f.owner == owner
+        now = utcnow()
+
+        def predicate(f: FileObjectData) -> bool:
+            if owner is not None and f.owner != owner:
+                return False
+            if tags is not None and not set(tags) <= set(f.tags):
+                return False
+            if mime_type is not None and f.mime_type != mime_type:
+                return False
+            if size_min is not None and f.size < size_min:
+                return False
+            if size_max is not None and f.size > size_max:
+                return False
+            if not _in_window(f.created_at, created_after, created_before):
+                return False
+            if not _in_window(f.updated_at, updated_after, updated_before):
+                return False
+            if not include_deleted and f.deleted_at is not None:
+                return False
+            if not include_expired and f.is_expired(now):
+                return False
+            return True
+
         items = self._store.page(predicate, limit, offset)
         return Page(
             items=items, total=self._store.count(predicate), limit=limit, offset=offset
         )
+
+    def list_deleted(
+        self,
+        owner: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Page[FileObjectData]:
+        predicate = lambda f: f.deleted_at is not None and (
+            owner is None or f.owner == owner
+        )
+        items = self._store.page(predicate, limit, offset)
+        return Page(
+            items=items, total=self._store.count(predicate), limit=limit, offset=offset
+        )
+
+    def list_expired(self, before, limit: int = 100) -> list[FileObjectData]:
+        with self._store._lock:
+            items = [
+                item
+                for item in self._store._items.values()
+                if item.expires_at is not None
+                and ensure_utc(item.expires_at) <= ensure_utc(before)
+            ]
+            items.sort(key=lambda i: (ensure_utc(i.expires_at), i.id))
+            return items[:limit]
+
+    def count_by_owner(self, owner: str, *, include_deleted: bool = False) -> int:
+        now = utcnow()
+        return self._store.count(
+            lambda f: f.owner == owner
+            and (include_deleted or f.deleted_at is None)
+            and not f.is_expired(now)
+        )
+
+    def bytes_by_owner(self, owner: str, *, include_deleted: bool = False) -> int:
+        now = utcnow()
+        with self._store._lock:
+            return sum(
+                item.size
+                for item in self._store._items.values()
+                if item.owner == owner
+                and (include_deleted or item.deleted_at is None)
+                and not item.is_expired(now)
+            )
+
+
+class InMemoryAuditRepository:
+    def __init__(self) -> None:
+        self._events: dict[str, AuditData] = {}
+        self._lock = threading.RLock()
+
+    def append(self, event: AuditData) -> AuditData:
+        with self._lock:
+            if event.id in self._events:
+                raise ConflictError("audit event already exists", details={"id": event.id})
+            self._events[event.id] = event
+            return event
+
+    def list(
+        self,
+        owner: str | None = None,
+        operation: str | None = None,
+        since=None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Page[AuditData]:
+        with self._lock:
+            items = [
+                event
+                for event in self._events.values()
+                if (owner is None or event.owner == owner)
+                and (operation is None or event.operation == operation)
+                and (since is None or ensure_utc(event.timestamp) >= ensure_utc(since))
+            ]
+            items.sort(key=lambda e: (ensure_utc(e.timestamp), e.id))
+            total = len(items)
+            return Page(items=items[offset : offset + limit], total=total, limit=limit, offset=offset)
+
+    def prune_before(self, cutoff) -> int:
+        moment = ensure_utc(cutoff)
+        with self._lock:
+            stale = [
+                event_id
+                for event_id, event in self._events.items()
+                if ensure_utc(event.timestamp) < moment
+            ]
+            for event_id in stale:
+                del self._events[event_id]
+            return len(stale)

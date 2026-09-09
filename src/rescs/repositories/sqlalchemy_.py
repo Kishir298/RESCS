@@ -8,12 +8,49 @@ domain errors.
 
 from __future__ import annotations
 
-from sqlalchemy import String, cast, or_
+from datetime import datetime
+
+from sqlalchemy import String, and_, cast, func, or_
 
 from rescs.db.session import SessionFactory, session_scope
-from rescs.domain import FileObjectData, Page, RecordData
+from rescs.domain import AuditData, FileObjectData, Page, RecordData, ensure_utc, utcnow
 from rescs.errors import ConflictError, NotFoundError
-from rescs.models import FileObject, Record
+from rescs.models import AuditEvent, FileObject, Record
+
+
+def _tag_pattern(column, tag: str):
+    """Exact-element LIKE match on a JSON tag array.
+
+    Tags cannot contain quotes/backslashes (validated charset), so matching
+    the double-quoted element is exact. ``_``/``%``/``\\`` are escaped because
+    ``_`` is a legal tag character and a LIKE wildcard.
+    """
+    escaped = (
+        tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
+    return cast(column, String).like(f'%"{escaped}"%', escape="\\")
+
+
+def _live_record_filter(now: datetime):
+    return and_(
+        Record.deleted_at.is_(None),
+        or_(Record.expires_at.is_(None), Record.expires_at > now),
+    )
+
+
+def _live_file_filter(now: datetime):
+    return and_(
+        FileObject.deleted_at.is_(None),
+        or_(FileObject.expires_at.is_(None), FileObject.expires_at > now),
+    )
+
+
+def _apply_window(query, column, after, before):
+    if after is not None:
+        query = query.filter(column >= ensure_utc(after))
+    if before is not None:
+        query = query.filter(column < ensure_utc(before))
+    return query
 
 
 class SQLAlchemyRecordRepository:
@@ -32,17 +69,42 @@ class SQLAlchemyRecordRepository:
         return record
 
     def get(self, record_id: str) -> RecordData:
+        now = utcnow()
+        with session_scope(self._session_factory, "get record") as session:
+            row = session.get(Record, record_id)
+            if row is None:
+                raise NotFoundError("record not found", details={"id": record_id})
+            data = row.to_domain()
+            if data.deleted_at is not None or data.is_expired(now):
+                raise NotFoundError("record not found", details={"id": record_id})
+            return data
+
+    def get_including_deleted(self, record_id: str) -> RecordData:
         with session_scope(self._session_factory, "get record") as session:
             row = session.get(Record, record_id)
             if row is None:
                 raise NotFoundError("record not found", details={"id": record_id})
             return row.to_domain()
 
-    def get_by_namespace_key(self, namespace: str, key: str) -> RecordData | None:
-        with session_scope(self._session_factory, "get record by namespace/key") as session:
+    def find_occupant(self, namespace: str, key: str) -> RecordData | None:
+        with session_scope(self._session_factory, "find record occupant") as session:
             row = (
                 session.query(Record)
                 .filter(Record.namespace == namespace, Record.key == key)
+                .first()
+            )
+            return row.to_domain() if row is not None else None
+
+    def get_by_namespace_key(self, namespace: str, key: str) -> RecordData | None:
+        now = utcnow()
+        with session_scope(self._session_factory, "get record by namespace/key") as session:
+            row = (
+                session.query(Record)
+                .filter(
+                    Record.namespace == namespace,
+                    Record.key == key,
+                    _live_record_filter(now),
+                )
                 .first()
             )
             return row.to_domain() if row is not None else None
@@ -65,6 +127,10 @@ class SQLAlchemyRecordRepository:
             row.idempotency_key = record.idempotency_key
             row.etag = record.etag
             row.updated_at = record.updated_at
+            row.tags = list(record.tags or [])
+            row.expires_at = ensure_utc(record.expires_at)
+            row.deleted_at = ensure_utc(record.deleted_at)
+            row.deleted_by = record.deleted_by
         return record
 
     def delete(self, record_id: str) -> None:
@@ -90,7 +156,15 @@ class SQLAlchemyRecordRepository:
         owner: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tags: list[str] | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
+        include_deleted: bool = False,
+        include_expired: bool = False,
     ) -> Page[RecordData]:
+        now = utcnow()
         with session_scope(self._session_factory, "list records") as session:
             query = session.query(Record)
             if namespace is not None:
@@ -99,6 +173,16 @@ class SQLAlchemyRecordRepository:
                 query = query.filter(Record.key.startswith(key_prefix))
             if owner is not None:
                 query = query.filter(Record.owner == owner)
+            for tag in tags or []:
+                query = query.filter(_tag_pattern(Record.tags, tag))
+            query = _apply_window(query, Record.created_at, created_after, created_before)
+            query = _apply_window(query, Record.updated_at, updated_after, updated_before)
+            if not include_deleted:
+                query = query.filter(Record.deleted_at.is_(None))
+            if not include_expired:
+                query = query.filter(
+                    or_(Record.expires_at.is_(None), Record.expires_at > now)
+                )
             total = query.count()
             rows = (
                 query.order_by(Record.updated_at.asc(), Record.id.asc())
@@ -109,6 +193,43 @@ class SQLAlchemyRecordRepository:
             items = [row.to_domain() for row in rows]
             return Page(items=items, total=total, limit=limit, offset=offset)
 
+    def list_deleted(
+        self,
+        namespace: str | None = None,
+        owner: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Page[RecordData]:
+        with session_scope(self._session_factory, "list deleted records") as session:
+            query = session.query(Record).filter(Record.deleted_at.is_not(None))
+            if namespace is not None:
+                query = query.filter(Record.namespace == namespace)
+            if owner is not None:
+                query = query.filter(Record.owner == owner)
+            total = query.count()
+            rows = (
+                query.order_by(Record.deleted_at.desc(), Record.id.asc())
+                .limit(limit)
+                .offset(offset)
+                .all()
+            )
+            items = [row.to_domain() for row in rows]
+            return Page(items=items, total=total, limit=limit, offset=offset)
+
+    def list_expired(self, before: datetime, limit: int = 100) -> list[RecordData]:
+        with session_scope(self._session_factory, "list expired records") as session:
+            rows = (
+                session.query(Record)
+                .filter(
+                    Record.expires_at.is_not(None),
+                    Record.expires_at <= ensure_utc(before),
+                )
+                .order_by(Record.expires_at.asc(), Record.id.asc())
+                .limit(limit)
+                .all()
+            )
+            return [row.to_domain() for row in rows]
+
     def search(
         self,
         query: str,
@@ -116,14 +237,26 @@ class SQLAlchemyRecordRepository:
         owner: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tags: list[str] | None = None,
+        include_deleted: bool = False,
+        include_expired: bool = False,
     ) -> Page[RecordData]:
         pattern = f"%{query}%"
+        now = utcnow()
         with session_scope(self._session_factory, "search records") as session:
             base = session.query(Record)
             if namespace is not None:
                 base = base.filter(Record.namespace == namespace)
             if owner is not None:
                 base = base.filter(Record.owner == owner)
+            for tag in tags or []:
+                base = base.filter(_tag_pattern(Record.tags, tag))
+            if not include_deleted:
+                base = base.filter(Record.deleted_at.is_(None))
+            if not include_expired:
+                base = base.filter(
+                    or_(Record.expires_at.is_(None), Record.expires_at > now)
+                )
             condition = or_(
                 Record.key.ilike(pattern),
                 cast(Record.meta, String).ilike(pattern),
@@ -139,6 +272,17 @@ class SQLAlchemyRecordRepository:
             )
             items = [row.to_domain() for row in rows]
             return Page(items=items, total=total, limit=limit, offset=offset)
+
+    def count_by_owner(self, owner: str, *, include_deleted: bool = False) -> int:
+        now = utcnow()
+        with session_scope(self._session_factory, "count records by owner") as session:
+            query = session.query(func.count(Record.id)).filter(Record.owner == owner)
+            if not include_deleted:
+                query = query.filter(Record.deleted_at.is_(None))
+            query = query.filter(
+                or_(Record.expires_at.is_(None), Record.expires_at > now)
+            )
+            return int(query.scalar() or 0)
 
     @staticmethod
     def _conflict(record: RecordData) -> ConflictError:
@@ -172,6 +316,17 @@ class SQLAlchemyFileObjectRepository:
         return file_object
 
     def get(self, file_id: str) -> FileObjectData:
+        now = utcnow()
+        with session_scope(self._session_factory, "get file object") as session:
+            row = session.get(FileObject, file_id)
+            if row is None:
+                raise NotFoundError("file not found", details={"id": file_id})
+            data = row.to_domain()
+            if data.deleted_at is not None or data.is_expired(now):
+                raise NotFoundError("file not found", details={"id": file_id})
+            return data
+
+    def get_including_deleted(self, file_id: str) -> FileObjectData:
         with session_scope(self._session_factory, "get file object") as session:
             row = session.get(FileObject, file_id)
             if row is None:
@@ -198,6 +353,10 @@ class SQLAlchemyFileObjectRepository:
             row.idempotency_key = file_object.idempotency_key
             row.etag = file_object.etag
             row.updated_at = file_object.updated_at
+            row.tags = list(file_object.tags or [])
+            row.expires_at = ensure_utc(file_object.expires_at)
+            row.deleted_at = ensure_utc(file_object.deleted_at)
+            row.deleted_by = file_object.deleted_by
         return file_object
 
     def delete(self, file_id: str) -> None:
@@ -221,11 +380,38 @@ class SQLAlchemyFileObjectRepository:
         owner: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tags: list[str] | None = None,
+        mime_type: str | None = None,
+        size_min: int | None = None,
+        size_max: int | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
+        include_deleted: bool = False,
+        include_expired: bool = False,
     ) -> Page[FileObjectData]:
+        now = utcnow()
         with session_scope(self._session_factory, "list file objects") as session:
             query = session.query(FileObject)
             if owner is not None:
                 query = query.filter(FileObject.owner == owner)
+            for tag in tags or []:
+                query = query.filter(_tag_pattern(FileObject.tags, tag))
+            if mime_type is not None:
+                query = query.filter(FileObject.mime_type == mime_type)
+            if size_min is not None:
+                query = query.filter(FileObject.size >= size_min)
+            if size_max is not None:
+                query = query.filter(FileObject.size <= size_max)
+            query = _apply_window(query, FileObject.created_at, created_after, created_before)
+            query = _apply_window(query, FileObject.updated_at, updated_after, updated_before)
+            if not include_deleted:
+                query = query.filter(FileObject.deleted_at.is_(None))
+            if not include_expired:
+                query = query.filter(
+                    or_(FileObject.expires_at.is_(None), FileObject.expires_at > now)
+                )
             total = query.count()
             rows = (
                 query.order_by(FileObject.updated_at.asc(), FileObject.id.asc())
@@ -236,9 +422,118 @@ class SQLAlchemyFileObjectRepository:
             items = [row.to_domain() for row in rows]
             return Page(items=items, total=total, limit=limit, offset=offset)
 
+    def list_deleted(
+        self,
+        owner: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Page[FileObjectData]:
+        with session_scope(self._session_factory, "list deleted files") as session:
+            query = session.query(FileObject).filter(FileObject.deleted_at.is_not(None))
+            if owner is not None:
+                query = query.filter(FileObject.owner == owner)
+            total = query.count()
+            rows = (
+                query.order_by(FileObject.deleted_at.desc(), FileObject.id.asc())
+                .limit(limit)
+                .offset(offset)
+                .all()
+            )
+            items = [row.to_domain() for row in rows]
+            return Page(items=items, total=total, limit=limit, offset=offset)
+
+    def list_expired(self, before: datetime, limit: int = 100) -> list[FileObjectData]:
+        with session_scope(self._session_factory, "list expired files") as session:
+            rows = (
+                session.query(FileObject)
+                .filter(
+                    FileObject.expires_at.is_not(None),
+                    FileObject.expires_at <= ensure_utc(before),
+                )
+                .order_by(FileObject.expires_at.asc(), FileObject.id.asc())
+                .limit(limit)
+                .all()
+            )
+            return [row.to_domain() for row in rows]
+
+    def count_by_owner(self, owner: str, *, include_deleted: bool = False) -> int:
+        now = utcnow()
+        with session_scope(self._session_factory, "count files by owner") as session:
+            query = session.query(func.count(FileObject.id)).filter(
+                FileObject.owner == owner
+            )
+            if not include_deleted:
+                query = query.filter(FileObject.deleted_at.is_(None))
+            query = query.filter(
+                or_(FileObject.expires_at.is_(None), FileObject.expires_at > now)
+            )
+            return int(query.scalar() or 0)
+
+    def bytes_by_owner(self, owner: str, *, include_deleted: bool = False) -> int:
+        now = utcnow()
+        with session_scope(self._session_factory, "sum file bytes by owner") as session:
+            query = session.query(func.coalesce(func.sum(FileObject.size), 0)).filter(
+                FileObject.owner == owner
+            )
+            if not include_deleted:
+                query = query.filter(FileObject.deleted_at.is_(None))
+            query = query.filter(
+                or_(FileObject.expires_at.is_(None), FileObject.expires_at > now)
+            )
+            return int(query.scalar() or 0)
+
     @staticmethod
     def _conflict(file_object: FileObjectData) -> ConflictError:
         return ConflictError(
             "a file with the same id or idempotency key already exists",
             details={"id": file_object.id, "idempotency_key": file_object.idempotency_key},
         )
+
+
+class SQLAlchemyAuditRepository:
+    def __init__(self, session_factory: SessionFactory) -> None:
+        self._session_factory = session_factory
+
+    def append(self, event: AuditData) -> AuditData:
+        with session_scope(self._session_factory, "append audit event") as session:
+            if session.get(AuditEvent, event.id) is not None:
+                raise ConflictError(
+                    "audit event already exists", details={"id": event.id}
+                )
+            session.add(AuditEvent.from_domain(event))
+        return event
+
+    def list(
+        self,
+        owner: str | None = None,
+        operation: str | None = None,
+        since: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Page[AuditData]:
+        with session_scope(self._session_factory, "list audit events") as session:
+            query = session.query(AuditEvent)
+            if owner is not None:
+                query = query.filter(AuditEvent.owner == owner)
+            if operation is not None:
+                query = query.filter(AuditEvent.operation == operation)
+            if since is not None:
+                query = query.filter(AuditEvent.timestamp >= ensure_utc(since))
+            total = query.count()
+            rows = (
+                query.order_by(AuditEvent.timestamp.asc(), AuditEvent.id.asc())
+                .limit(limit)
+                .offset(offset)
+                .all()
+            )
+            items = [row.to_domain() for row in rows]
+            return Page(items=items, total=total, limit=limit, offset=offset)
+
+    def prune_before(self, cutoff: datetime) -> int:
+        with session_scope(self._session_factory, "prune audit events") as session:
+            deleted = (
+                session.query(AuditEvent)
+                .filter(AuditEvent.timestamp < ensure_utc(cutoff))
+                .delete(synchronize_session=False)
+            )
+            return int(deleted or 0)
