@@ -40,11 +40,25 @@ class FileObjectCreate(_FileJsonMixin):
     idempotency_key: str | None = Field(default=None, max_length=128)
     tags: list[str] = Field(default_factory=list)
     expires_at: datetime | None = None
+    ttl_seconds: int | None = None
 
     @field_validator("tags")
     @classmethod
     def _validate_tags(cls, tags: list[str]) -> list[str]:
         return _validate_tag_list(tags)
+
+    @field_validator("ttl_seconds")
+    @classmethod
+    def _validate_ttl(cls, ttl: int | None) -> int | None:
+        if ttl is not None and ttl < 1:
+            raise ValueError("ttl_seconds must be >= 1")
+        return ttl
+
+    @model_validator(mode="after")
+    def _expiry_not_ambiguous(self):
+        if self.expires_at is not None and self.ttl_seconds is not None:
+            raise ValueError("set either expires_at or ttl_seconds, not both")
+        return self
 
 
 class FileObjectRead(BaseModel):

@@ -10,8 +10,8 @@ FILES = "/api/v1/files"
 
 def test_tag_validation(client: TestClient):
     base = {"namespace": "tg", "key": "k", "value": {}}
-    # Too many tags -> 422.
-    response = client.post(RECORDS, json={**base, "key": "t1", "tags": [f"t{i}" for i in range(33)]})
+    # Too many tags -> 422 (limit 50).
+    response = client.post(RECORDS, json={**base, "key": "t1", "tags": [f"t{i}" for i in range(51)]})
     assert response.status_code == 422
     # Illegal characters -> 422.
     bad = client.post(RECORDS, json={**base, "key": "t2", "tags": ["not a tag!"]})

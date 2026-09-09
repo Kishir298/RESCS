@@ -15,14 +15,15 @@ _TAG_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def _validate_tag_list(tags: list[str]) -> list[str]:
-    if len(tags) > MAX_TAGS:
+    stripped = [tag.strip() for tag in tags]
+    if len(stripped) > MAX_TAGS:
         raise ValueError(f"at most {MAX_TAGS} tags are allowed")
-    for tag in tags:
+    for tag in stripped:
         if not tag or len(tag) > MAX_TAG_LENGTH or not _TAG_PATTERN.match(tag):
             raise ValueError(
                 f"invalid tag {tag!r}; 1-{MAX_TAG_LENGTH} chars of [A-Za-z0-9._-] expected"
             )
-    return tags
+    return stripped
 
 
 def _is_json_serializable(value: Any) -> bool:
@@ -56,11 +57,25 @@ class RecordCreate(_JsonFieldMixin):
     idempotency_key: str | None = Field(default=None, max_length=128)
     tags: list[str] = Field(default_factory=list)
     expires_at: datetime | None = None
+    ttl_seconds: int | None = None
 
     @field_validator("tags")
     @classmethod
     def _validate_tags(cls, tags: list[str]) -> list[str]:
         return _validate_tag_list(tags)
+
+    @field_validator("ttl_seconds")
+    @classmethod
+    def _validate_ttl(cls, ttl: int | None) -> int | None:
+        if ttl is not None and ttl < 1:
+            raise ValueError("ttl_seconds must be >= 1")
+        return ttl
+
+    @model_validator(mode="after")
+    def _expiry_not_ambiguous(self):
+        if self.expires_at is not None and self.ttl_seconds is not None:
+            raise ValueError("set either expires_at or ttl_seconds, not both")
+        return self
 
 
 class RecordUpdate(_JsonFieldMixin):
@@ -70,6 +85,7 @@ class RecordUpdate(_JsonFieldMixin):
     key: str | None = Field(default=None, min_length=1, max_length=512)
     tags: list[str] | None = None
     expires_at: datetime | None = None
+    ttl_seconds: int | None = None
 
     @field_validator("tags")
     @classmethod
@@ -77,6 +93,19 @@ class RecordUpdate(_JsonFieldMixin):
         if tags is None:
             return None
         return _validate_tag_list(tags)
+
+    @field_validator("ttl_seconds")
+    @classmethod
+    def _validate_ttl(cls, ttl: int | None) -> int | None:
+        if ttl is not None and ttl < 1:
+            raise ValueError("ttl_seconds must be >= 1")
+        return ttl
+
+    @model_validator(mode="after")
+    def _expiry_not_ambiguous(self):
+        if self.expires_at is not None and self.ttl_seconds is not None:
+            raise ValueError("set either expires_at or ttl_seconds, not both")
+        return self
 
 
 class RecordRead(BaseModel):

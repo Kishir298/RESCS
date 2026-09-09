@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Iterable, Iterator
 from datetime import datetime
 
 from rescs.config import Settings
@@ -34,6 +35,7 @@ from rescs.interfaces.repository import FileObjectRepository
 from rescs.logging import get_logger
 from rescs.schemas.file_object import FileObjectCreate
 from rescs.services.audit import AuditService
+from rescs.services.expiry import resolve_expiry
 from rescs.services.utils import clamp_pagination
 
 logger = get_logger(__name__)
@@ -126,6 +128,38 @@ class FileService:
             )
         return moment
 
+    def _resolve_expiry(
+        self, expires_at: datetime | None, ttl_seconds: int | None
+    ) -> datetime | None:
+        return resolve_expiry(expires_at, ttl_seconds, self._settings)
+
+    def _enforce_post_write_quota(self, owner: str, file_id: str) -> None:
+        """Race-safe post-write quota check; rolls back on over-quota."""
+        if self._settings is None:
+            return
+        over = False
+        details: dict = {"owner": owner}
+        if self._settings.max_files_per_owner:
+            count = self._repo.count_by_owner(owner)
+            if count > self._settings.max_files_per_owner:
+                over = True
+                details.update({"count": count, "max": self._settings.max_files_per_owner})
+        if not over and self._settings.max_bytes_per_owner:
+            used = self._repo.bytes_by_owner(owner)
+            if used > self._settings.max_bytes_per_owner:
+                over = True
+                details.update({"used": used, "max": self._settings.max_bytes_per_owner})
+        if over:
+            try:
+                self._repo.delete(file_id)
+            except Exception:
+                pass
+            try:
+                self._store.delete(file_id)
+            except Exception:
+                pass
+            raise QuotaExceededError(f"owner {owner!r} exceeded storage quota", details=details)
+
     # -- lifecycle ----------------------------------------------------------
 
     def create(
@@ -138,7 +172,9 @@ class FileService:
         try:
             tags = normalize_tags(payload.tags)
             validate_tags(tags)
-            expires_at = self._validate_expiry(payload.expires_at)
+            expires_at = self._resolve_expiry(
+                payload.expires_at, getattr(payload, "ttl_seconds", None)
+            )
             if payload.idempotency_key is not None:
                 existing = self._repo.find_by_idempotency_key(payload.idempotency_key)
                 if existing is not None:
@@ -183,9 +219,102 @@ class FileService:
             except Exception:
                 self._store.delete(file_id)
                 raise
+            self._enforce_post_write_quota(payload.owner, created.id)
             self._audited("file.upload", created)
             return created
         except Exception as exc:
+            self._audited("file.upload", None, exc, owner=payload.owner)
+            raise
+
+    def create_stream(
+        self,
+        payload: FileObjectCreate,
+        chunks: Iterable[bytes],
+        *,
+        actor: str = "system",
+    ) -> FileObjectData:
+        """Store a file from a chunk iterable with bounded memory.
+
+        Streams chunks to the object store while computing SHA-256/size,
+        then validates governance before publishing metadata. Failures
+        never leave orphan blobs or partial metadata visible.
+        """
+        file_id = str(uuid.uuid4())
+        digest = hashlib.sha256()
+        size = 0
+        max_size = self._settings.max_file_size if self._settings else 0
+        try:
+            tags = normalize_tags(payload.tags)
+            validate_tags(tags)
+            expires_at = self._resolve_expiry(
+                payload.expires_at, getattr(payload, "ttl_seconds", None)
+            )
+            if payload.idempotency_key is not None:
+                existing = self._repo.find_by_idempotency_key(payload.idempotency_key)
+                if existing is not None:
+                    if existing.deleted_at is not None:
+                        raise ConflictError(
+                            "idempotency key belongs to a deleted file;"
+                            " purge it or use a new key",
+                            details={"idempotency_key": payload.idempotency_key},
+                        ) from None
+                    if existing.is_expired():
+                        self._purge_row(existing)
+                    else:
+                        # Drain caller's iterator to keep connection state sane.
+                        for _ in chunks:
+                            pass
+                        return existing
+
+            def _bounded() -> Iterator[bytes]:
+                nonlocal size
+                for chunk in chunks:
+                    if not chunk:
+                        continue
+                    size += len(chunk)
+                    if max_size and size > max_size:
+                        raise PayloadTooLargeError(
+                            f"file exceeds maximum size of {max_size} bytes",
+                            details={"size": size, "max": max_size},
+                        )
+                    digest.update(chunk)
+                    yield chunk
+
+            self._store.put_stream(file_id, _bounded())
+            # Governance (quotas/metadata) after size is known; cleanup on deny.
+            self._check_governance(payload.owner, size, payload.metadata)
+            now = utcnow()
+            hex_digest = digest.hexdigest()
+            file_object = FileObjectData(
+                id=file_id,
+                filename=payload.filename,
+                mime_type=payload.mime_type,
+                size=size,
+                storage_path=file_id,
+                sha256=hex_digest,
+                metadata=payload.metadata,
+                owner=payload.owner,
+                version=1,
+                idempotency_key=payload.idempotency_key,
+                etag=file_etag(hex_digest, size),
+                created_at=now,
+                updated_at=now,
+                tags=tags,
+                expires_at=expires_at,
+            )
+            try:
+                created = self._repo.create(file_object)
+            except Exception:
+                self._store.delete(file_id)
+                raise
+            self._enforce_post_write_quota(payload.owner, created.id)
+            self._audited("file.upload", created)
+            return created
+        except Exception as exc:
+            try:
+                self._store.delete(file_id)
+            except Exception:
+                pass
             self._audited("file.upload", None, exc, owner=payload.owner)
             raise
 
@@ -219,6 +348,19 @@ class FileService:
         except Exception as exc:
             self._audited("file.download", target, exc)
             raise
+
+    def download_stream(
+        self, file_id: str, *, actor: str = "system", chunk_size: int = 1024 * 1024
+    ) -> tuple[FileObjectData, Iterator[bytes]]:
+        """Return metadata plus a bounded-memory byte iterator.
+
+        Integrity is verified on first full read by the caller via the
+        stored SHA-256; the API layer streams directly from the store.
+        """
+        file_object = self._repo.get(file_id)
+        stream = self._store.get_stream(file_object.storage_path, chunk_size)
+        self._audited("file.download", file_object)
+        return file_object, stream
 
     def delete(
         self,

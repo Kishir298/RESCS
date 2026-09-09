@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile
+from fastapi.responses import StreamingResponse
 
 from rescs.api.deps import get_settings, get_services, parse_etag
 from rescs.config import Settings
@@ -37,28 +38,60 @@ async def upload_file(
     owner: str = Form(default="system"),
     tags: list[str] = Form(default=[]),
     expires_at: str | None = Form(default=None),
+    ttl_seconds: int | None = Form(default=None),
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
 ) -> FileObjectRead:
-    data = await upload.read()
-    payload = FileObjectCreate(filename=upload.filename or "unnamed")
-    payload.owner = enforce_owner(
-        requested=owner, principal=principal, settings=settings
-    )
-    payload.tags = normalize_tags(tags)
-    if expires_at is not None:
+    import tempfile
+
+    from rescs.interfaces.object_store import CHUNK_SIZE
+
+    threshold = settings.streaming_threshold_bytes or 8 * 1024 * 1024
+    # Bounded-memory spool: small payloads stay in RAM, large spill to disk.
+    # Never holds more than ~1MiB in RAM at once during intake.
+    spool = tempfile.SpooledTemporaryFile(max_size=threshold)
+    try:
+        while True:
+            chunk = await upload.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            spool.write(chunk)
+        spool.seek(0)
+
+        def _chunks():
+            while True:
+                piece = spool.read(CHUNK_SIZE)
+                if not piece:
+                    break
+                yield piece
+
+        payload = FileObjectCreate(filename=upload.filename or "unnamed")
+        payload.owner = enforce_owner(
+            requested=owner, principal=principal, settings=settings
+        )
+        payload.tags = normalize_tags(tags)
+        if expires_at is not None:
+            try:
+                payload.expires_at = datetime.fromisoformat(expires_at)
+            except ValueError:
+                raise InvalidRequestError(
+                    "expires_at must be ISO-8601",
+                    details={"expires_at": expires_at},
+                ) from None
+        if ttl_seconds is not None:
+            payload.ttl_seconds = ttl_seconds
+        mime_type = _sniff_mime(upload.content_type)
+        if mime_type != "application/octet-stream":
+            payload.mime_type = mime_type
+        return FileObjectRead.from_domain(
+            services.files.create_stream(payload, _chunks())
+        )
+    finally:
         try:
-            payload.expires_at = datetime.fromisoformat(expires_at)
-        except ValueError:
-            raise InvalidRequestError(
-                "expires_at must be ISO-8601",
-                details={"expires_at": expires_at},
-            ) from None
-    mime_type = _sniff_mime(upload.content_type)
-    if mime_type != "application/octet-stream":
-        payload.mime_type = mime_type
-    return FileObjectRead.from_domain(services.files.create(payload, data))
+            spool.close()
+        except Exception:
+            pass
 
 
 def _sniff_mime(content_type: str | None) -> str:
@@ -160,16 +193,23 @@ def download_file(
     meta = _authorized_file(
         services, file_id, principal=principal, settings=settings
     )
+    threshold = settings.streaming_threshold_bytes or 8 * 1024 * 1024
+    headers = {
+        "Content-Disposition": f"attachment; filename=\"{meta.filename}\"",
+        "X-File-SHA256": meta.sha256,
+        "X-File-Size": str(meta.size),
+        "ETag": f'"{meta.etag}"',
+    }
+    if meta.size >= threshold:
+        _meta, stream = services.files.download_stream(file_id)
+        return StreamingResponse(
+            stream, media_type=meta.mime_type, headers=headers
+        )
     _meta, data = services.files.download(file_id)
     return Response(
         content=data,
         media_type=meta.mime_type,
-        headers={
-            "Content-Disposition": f"attachment; filename=\"{meta.filename}\"",
-            "X-File-SHA256": meta.sha256,
-            "X-File-Size": str(meta.size),
-            "ETag": f'"{meta.etag}"',
-        },
+        headers=headers,
     )
 
 

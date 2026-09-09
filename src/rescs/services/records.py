@@ -32,6 +32,7 @@ from rescs.etag import content_etag
 from rescs.interfaces.repository import RecordRepository
 from rescs.schemas.record import RecordCreate, RecordUpdate
 from rescs.services.audit import AuditService
+from rescs.services.expiry import resolve_expiry
 from rescs.services.utils import clamp_pagination
 
 DEFAULT_LIMIT = 100
@@ -123,11 +124,27 @@ class RecordService:
             )
         return moment
 
+    def _resolve_expiry(
+        self, expires_at: datetime | None, ttl_seconds: int | None
+    ) -> datetime | None:
+        return resolve_expiry(expires_at, ttl_seconds, self._settings)
+
     def _reclaim_expired_occupant(self, namespace: str, key: str) -> None:
         """Hard-remove an expired (not deleted) occupant so a write can proceed."""
         occupant = self._repo.find_occupant(namespace, key)
         if occupant is not None and occupant.deleted_at is None and occupant.is_expired():
             self._repo.delete(occupant.id)
+
+    def _check_bulk_owner(self, resource_owner: str) -> None:
+        """Enforce single-owner lock inside bulk batches (per-item 403)."""
+        from rescs.errors import ForbiddenError
+
+        locked = self._settings.api_key_owner if self._settings else ""
+        if locked and resource_owner != locked:
+            raise ForbiddenError(
+                f"this resource belongs to owner {resource_owner!r}",
+                details={"owner": resource_owner},
+            )
 
     # -- create / upsert / read / update -----------------------------------
 
@@ -136,7 +153,7 @@ class RecordService:
             tags = normalize_tags(payload.tags)
             validate_tags(tags)
             self._check_metadata_size(payload.metadata)
-            expires_at = self._validate_expiry(payload.expires_at)
+            expires_at = self._resolve_expiry(payload.expires_at, payload.ttl_seconds)
             if payload.idempotency_key is not None:
                 existing = self._repo.find_by_idempotency_key(payload.idempotency_key)
                 if existing is not None:
@@ -169,6 +186,19 @@ class RecordService:
                 expires_at=expires_at,
             )
             created = self._repo.create(record)
+            # Post-write race guard: two concurrent creates may both pass the
+            # pre-check; the loser rolls back so quotas stay race-safe.
+            if self._settings is not None and self._settings.max_records_per_owner:
+                count = self._repo.count_by_owner(payload.owner)
+                if count > self._settings.max_records_per_owner:
+                    try:
+                        self._repo.delete(created.id)
+                    except Exception:
+                        pass
+                    raise QuotaExceededError(
+                        f"owner {payload.owner!r} reached the record limit",
+                        details={"owner": payload.owner, "count": count, "max": self._settings.max_records_per_owner},
+                    )
             self._audited("record.create", created)
             return created
         except Exception as exc:
@@ -196,7 +226,7 @@ class RecordService:
             tags = normalize_tags(payload.tags)
             validate_tags(tags)
             self._check_metadata_size(payload.metadata)
-            expires_at = self._validate_expiry(payload.expires_at)
+            expires_at = self._resolve_expiry(payload.expires_at, payload.ttl_seconds)
             updated = RecordData(
                 id=existing.id,
                 namespace=payload.namespace,
@@ -246,6 +276,7 @@ class RecordService:
                 payload.key,
                 payload.tags,
                 payload.expires_at,
+                payload.ttl_seconds,
             )
             if all(field is None for field in fields):
                 raise InvalidRequestError(
@@ -256,11 +287,12 @@ class RecordService:
             metadata = payload.metadata if payload.metadata is not None else existing.metadata
             self._check_metadata_size(metadata)
             value = payload.value if payload.value is not None else existing.value
-            expires_at = (
-                self._validate_expiry(payload.expires_at)
-                if payload.expires_at is not None
-                else existing.expires_at
-            )
+            if payload.expires_at is not None or payload.ttl_seconds is not None:
+                expires_at = self._resolve_expiry(
+                    payload.expires_at, payload.ttl_seconds
+                )
+            else:
+                expires_at = existing.expires_at
             updated = RecordData(
                 id=existing.id,
                 namespace=payload.namespace if payload.namespace is not None else existing.namespace,
@@ -468,7 +500,12 @@ class RecordService:
     def bulk(
         self, operations: list[dict[str, Any]], *, actor: str = "system"
     ) -> list[dict[str, Any]]:
-        """Apply a bounded batch of per-item operations with explicit statuses."""
+        """Apply a bounded batch of per-item operations with explicit statuses.
+
+        Partial success is intentional: each item yields its own status.
+        Not atomic — successful items are not rolled back when a sibling
+        fails. Owner isolation is enforced per item in locked mode.
+        """
         batch_max = self._settings.max_bulk_batch if self._settings else 100
         if len(operations) > batch_max:
             raise InvalidRequestError(
@@ -490,6 +527,8 @@ class RecordService:
                     )
                     results.append({"index": index, "status": "put", "id": record.id})
                 elif op == "delete":
+                    target = self._repo.get(operation["id"])
+                    self._check_bulk_owner(target.owner)
                     self.delete(
                         operation["id"],
                         actor=actor,
@@ -497,6 +536,8 @@ class RecordService:
                     )
                     results.append({"index": index, "status": "deleted", "id": operation["id"]})
                 elif op == "restore":
+                    target = self._repo.get_including_deleted(operation["id"])
+                    self._check_bulk_owner(target.owner)
                     record = self.restore(
                         operation["id"],
                         actor=actor,
@@ -504,6 +545,8 @@ class RecordService:
                     )
                     results.append({"index": index, "status": "restored", "id": record.id})
                 elif op == "purge":
+                    target = self._repo.get_including_deleted(operation["id"])
+                    self._check_bulk_owner(target.owner)
                     self.purge(
                         operation["id"],
                         actor=actor,

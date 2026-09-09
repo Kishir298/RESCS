@@ -17,18 +17,23 @@ from rescs.errors import InvalidRequestError
 
 T = TypeVar("T")
 
-MAX_TAGS = 32
+MAX_TAGS = 50
 MAX_TAG_LENGTH = 64
 _TAG_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def normalize_tags(tags: list[str] | tuple[str, ...] | None) -> list[str]:
-    """Deduplicate (order-preserving) a tag list; validation lives in schemas."""
+    """Strip whitespace and deduplicate (order-preserving) a tag list.
+
+    Tags are case-sensitive. Empty-after-strip entries are dropped here and
+    rejected downstream by validation, so blank input never becomes a tag.
+    """
     if not tags:
         return []
     seen: set[str] = set()
     normalized: list[str] = []
-    for tag in tags:
+    for raw in tags:
+        tag = raw.strip() if isinstance(raw, str) else raw
         if tag not in seen:
             seen.add(tag)
             normalized.append(tag)
@@ -201,4 +206,45 @@ class AuditData:
             "request_id": self.request_id,
             "outcome": self.outcome,
             "error_code": self.error_code,
+        }
+
+
+@dataclass
+class UploadSessionData:
+    """Resumable upload session: tracks chunks until finalization."""
+
+    id: str
+    owner: str = "system"
+    filename: str = "unnamed"
+    content_type: str = "application/octet-stream"
+    total_size: int = 0
+    received_bytes: int = 0
+    chunk_size: int = 8388608
+    status: str = "active"  # active | finalized | cancelled | expired
+    checksum: str | None = None  # optional expected SHA-256
+    created_at: datetime = field(default_factory=utcnow)
+    updated_at: datetime = field(default_factory=utcnow)
+    expires_at: datetime = field(default_factory=utcnow)
+    metadata: dict = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
+
+    def is_expired(self, at: datetime | None = None) -> bool:
+        return ensure_utc(self.expires_at) <= (at or utcnow())
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "owner": self.owner,
+            "filename": self.filename,
+            "content_type": self.content_type,
+            "total_size": self.total_size,
+            "received_bytes": self.received_bytes,
+            "chunk_size": self.chunk_size,
+            "status": self.status,
+            "checksum": self.checksum,
+            "created_at": ensure_utc(self.created_at),
+            "updated_at": ensure_utc(self.updated_at),
+            "expires_at": ensure_utc(self.expires_at),
+            "metadata": dict(self.metadata),
+            "tags": list(self.tags),
         }
