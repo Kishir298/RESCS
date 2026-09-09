@@ -10,13 +10,14 @@ Resource `restore` (undelete a tombstone) is NOT system backup.
 
 ## Tool
 
-`python scripts/rescs_backup.py --database-url $RESCS_DATABASE_URL --storage-dir $RESCS_STORAGE_DIR --out backups/YYYYMMDD`
+`python scripts/rescs_backup.py --database-url $RESCS_DATABASE_URL --storage-dir $RESCS_STORAGE_DIR --out backups/YYYYMMDD [--verify]`
 
-Produces `db.dump`, `blobs/`, `manifest.json` (SHA-256 per blob).
+Produces atomically (staging dir + rename) `db.dump`, `blobs/` (recursive, dotfiles/`*.tmp` skipped), `manifest.json` (per-blob `path/size/sha256/mtime`, db hash, app/schema versions, counts, `verified` when `--verify`).
 
-- SQLite: online `sqlite3.backup` copy.
-- PostgreSQL: use `pg_dump -Fc` (script records hint; automate via cron).
-- S3 backend: sync bucket prefix (`aws s3 sync`) alongside DB dump.
+- SQLite: online `sqlite3.backup` copy + `PRAGMA integrity_check`.
+- PostgreSQL: runs `pg_dump -Fc` automatically; without `pg_dump` the backup exits `2` (never silent success).
+- S3 backend: script covers the local `storage_dir` view; for live S3 sync the bucket prefix (`aws s3 sync`) alongside the DB dump.
+- Exit codes: `0` success, `2` incomplete/failed (missing DB/storage, unreadable blob, hash mismatch, existing `--out`). Failures print `backup FAILED` to stderr.
 
 ## Retention / RPO / RTO
 
