@@ -111,11 +111,9 @@ def cancel_upload(
     principal: str = Depends(require_api_key),
 ) -> None:
     # Fetch for owner check; cancel is idempotent-ish (404 if unknown).
-    try:
-        session = services.uploads.get(session_id)
-    except Exception:
-        # Fall through to cancel which raises proper 404.
-        services.uploads.cancel(session_id, actor=principal)
-        return
+    # Never cancel blindly: an unknown/expired id must not delete another
+    # owner's chunks as a side effect. If get fails, surface 404 without
+    # touching storage.
+    session = services.uploads.get(session_id)
     assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
     services.uploads.cancel(session_id, actor=principal)
