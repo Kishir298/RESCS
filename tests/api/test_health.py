@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from rescs import __version__
+
 
 def test_root_meta(client: TestClient):
     response = client.get("/")
     assert response.status_code == 200
     body = response.json()
     assert body["service"] == "RESCS"
-    assert body["version"] == "0.1.0"
+    assert body["version"] == __version__
     assert body["docs"] == "/docs"
 
 
