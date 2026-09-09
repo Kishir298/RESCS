@@ -11,9 +11,11 @@ from __future__ import annotations
 import os
 import re
 import uuid
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from rescs.errors import StorageError
+from rescs.interfaces.object_store import CHUNK_SIZE
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
@@ -66,3 +68,45 @@ class LocalObjectStore:
     def exists(self, object_id: str) -> bool:
         path = self._resolve(object_id)
         return path.is_file()
+
+    def put_stream(self, object_id: str, chunks: Iterable[bytes]) -> None:
+        target = self._resolve(object_id)
+        try:
+            temp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+            with open(temp, "wb") as handle:
+                for chunk in chunks:
+                    if chunk:
+                        handle.write(chunk)
+            os.replace(temp, target)
+        except OSError as exc:
+            raise StorageError(
+                "failed to write object stream",
+                details={"object_id": object_id, "cause": str(exc)},
+            ) from exc
+
+    def get_stream(
+        self, object_id: str, chunk_size: int = CHUNK_SIZE
+    ) -> Iterator[bytes]:
+        target = self._resolve(object_id)
+        try:
+            with open(target, "rb") as handle:
+                while True:
+                    chunk = handle.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+        except OSError as exc:
+            raise StorageError(
+                "failed to read object stream",
+                details={"object_id": object_id, "cause": str(exc)},
+            ) from exc
+
+    def size(self, object_id: str) -> int:
+        target = self._resolve(object_id)
+        try:
+            return target.stat().st_size
+        except OSError as exc:
+            raise StorageError(
+                "failed to stat object",
+                details={"object_id": object_id, "cause": str(exc)},
+            ) from exc

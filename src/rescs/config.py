@@ -48,6 +48,25 @@ class Settings(BaseSettings):
     max_metadata_bytes: int = 65536
     max_bulk_batch: int = 100
     audit_retention_days: int = 90
+    # Maximum accepted TTL in seconds (0 = unlimited). Defaults to 365 days.
+    max_ttl_seconds: int = 31536000
+    # Payloads at/above this size stream instead of buffering fully in memory.
+    streaming_threshold_bytes: int = 8388608
+
+    # Object-store backend selection: local (default) or s3.
+    storage_backend: str = "local"
+    s3_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_region: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_path_prefix: str = ""
+
+    # Rate limiting (in-memory, single-instance).
+    rate_limit_enabled: bool = False
+    rate_limit_general_per_minute: int = 100
+    rate_limit_writes_per_minute: int = 60
+    rate_limit_uploads_per_minute: int = 20
 
     @field_validator("api_key")
     @classmethod
@@ -74,6 +93,8 @@ class Settings(BaseSettings):
         "max_file_size",
         "max_metadata_bytes",
         "audit_retention_days",
+        "max_ttl_seconds",
+        "streaming_threshold_bytes",
     )
     @classmethod
     def _validate_non_negative(cls, value: int) -> int:
@@ -81,11 +102,25 @@ class Settings(BaseSettings):
             raise ValueError("governance limits must be >= 0 (0 means unlimited)")
         return value
 
+    @field_validator("storage_backend")
+    @classmethod
+    def _validate_backend(cls, value: str) -> str:
+        if value not in {"local", "s3", "memory"}:
+            raise ValueError("RESCS_STORAGE_BACKEND must be local, s3, or memory")
+        return value
+
     @field_validator("max_bulk_batch")
     @classmethod
     def _validate_bulk_batch(cls, value: int) -> int:
         if not 1 <= value <= 1000:
             raise ValueError("RESCS_MAX_BULK_BATCH must be between 1 and 1000")
+        return value
+
+    @field_validator("rate_limit_general_per_minute", "rate_limit_writes_per_minute", "rate_limit_uploads_per_minute")
+    @classmethod
+    def _validate_rate(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("rate limits must be >= 0 (0 disables that bucket)")
         return value
 
 
