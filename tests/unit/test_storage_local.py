@@ -43,6 +43,29 @@ def test_path_traversal_rejected(tmp_path):
         store.get("../escape")
 
 
+def test_path_traversal_vectors_never_escape_base(tmp_path):
+    store = LocalObjectStore(tmp_path / "store")
+    vectors = [
+        "../escape",
+        "../../escape",
+        "..\\escape",
+        "/absolute/path",
+        "/etc/passwd",
+        "sub/dir",
+        "",
+        "x" * 129,
+    ]
+    for vector in vectors:
+        with pytest.raises(StorageError):
+            store.put(vector, b"x")
+        with pytest.raises(StorageError):
+            store.get(vector)
+    # Nothing escaped: the base dir holds no traversal artifacts and the
+    # parent directory gained no new entries from the rejected writes.
+    assert [p.name for p in (tmp_path / "store").iterdir() if not p.name.startswith(".")] == []
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["store"]
+
+
 def test_persists_across_instances(tmp_path):
     base = tmp_path / "store"
     first = LocalObjectStore(base)
