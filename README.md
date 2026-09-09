@@ -31,8 +31,12 @@ independently and connected through a stable contract (see
 
 ## Status
 
-v0.1.0 — Phases 1–10 complete (foundation through observability/health).
-See `docs/architecture.md` and `CHANGELOG.md`.
+v0.1.0 — Phases 1–13 complete (foundation through release readiness).
+Automated suite: unit + API + integration (restart persistence, lifecycle,
+concurrency, owner scoping, error contract, health, observability,
+CORE-consumer contract, bounded endurance). Live PostgreSQL/Supabase,
+deployed CORE ↔ RESCS interop and long-horizon endurance remain Ready for
+External Validation. See `docs/architecture.md` and `CHANGELOG.md`.
 
 ## Stack
 
@@ -46,12 +50,24 @@ See `docs/architecture.md` and `CHANGELOG.md`.
 
 ```
 src/rescs/
-├── main.py            # application factory + entry point
-├── config.py          # environment / .env configuration
-├── logging.py         # logging foundation
+├── main.py            # application factory, lifespan wiring
+├── config.py          # pydantic-settings configuration (env / .env)
+├── logging.py         # process logging foundation
+├── errors.py          # domain error hierarchy (codes + HTTP status)
+├── health.py          # named dependency checks + aggregate report
+├── domain.py          # storage-agnostic domain dataclasses
+├── etag.py            # deterministic content identifiers
+├── security.py        # X-API-Key auth + owner scoping
 ├── observability.py   # request-ID middleware + access logging
-├── errors.py          # domain error hierarchy
-└── health.py          # health/readiness reporting foundation
+├── contract.py        # machine-readable CORE contract
+├── db/                # engine, sessions, schema manager, bootstrap
+├── models/            # SQLAlchemy ORM models (records, file_objects)
+├── schemas/           # Pydantic request/response schemas + validation
+├── interfaces/        # repository + object-store protocols
+├── repositories/      # in-memory + SQLAlchemy implementations
+├── services/          # record + file services, composition root
+├── storage/           # object stores (local, memory)
+└── api/               # versioned HTTP API (v1), routers, deps, errors
 ```
 
 Detailed phase-by-phase documentation lives in `docs/`.

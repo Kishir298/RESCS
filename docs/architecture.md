@@ -95,9 +95,15 @@ src/rescs/
 | 8 | Synchronization and consistency | Complete |
 | 9 | C.O.R.E. integration contract | Complete |
 | 10 | Observability and health | Complete |
-| 11 | Testing and integration | Pending |
-| 12 | R.I.S.A.R.M.S. readiness | Pending |
-| 13 | Cleanup, documentation, release | Pending |
+| 11 | Testing and integration | Complete + Automated Tested |
+| 12 | R.I.S.A.R.M.S. readiness | Complete + Automated Tested |
+| 13 | Cleanup, documentation, release | Complete |
+
+Live PostgreSQL/Supabase, deployed CORE ↔ RESCS interop, multi-machine
+and endurance validation remain **Ready for External Validation** (see
+`CHANGELOG.md`): the implementation is cloud-ready with gated
+compatibility tests (`RESCS_INTEGRATION_DATABASE_URL`), but no live
+cloud/deployment run is claimed.
 
 Each phase ends with: full test run, documentation update, Git commit, and a
 push to `main`.
