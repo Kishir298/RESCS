@@ -61,6 +61,21 @@ record/file instead of creating a duplicate. This makes retries safe:
 Idempotency is checked on the shared key regardless of payload equality, so a
 retry with an identical key always converges to the first stored result.
 
+Idempotency keys are single-lifecycle: replaying a key that belongs to a
+**deleted** resource is `409 CONFLICT` (purge the tombstone or use a new
+key); replaying a key whose resource **expired** transparently replaces it.
+
+## Lifecycle and concurrency
+
+- Soft delete and restore are versioned mutations (`version` + 1) that keep
+  the content etag; both honor `If-Match`.
+- Restore onto a live `(namespace, key)` occupant is `409 CONFLICT` with the
+  occupant id in `details` — never a silent overwrite.
+- Record etags cover `(value, metadata, tags)` with tags sorted; tag order
+  never changes identity, and untagged records hash exactly as in v0.1.
+- Bulk items each enforce ETags/idempotency independently; per-item `412` /
+  `409` results are explicit, never silent.
+
 ## Blob integrity
 
 `GET /api/v1/files/{id}/content` verifies the stored bytes match

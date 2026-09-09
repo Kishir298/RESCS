@@ -72,11 +72,11 @@ src/rescs/
 ├── etag.py            # deterministic content identifiers
 ├── db/base.py         # SQLAlchemy declarative base
 ├── db/                # engine, sessions, schema manager, bootstrap
-├── models/            # SQLAlchemy ORM models (records, file_objects)
+├── models/            # SQLAlchemy ORM models (records, file_objects, audit_events)
 ├── schemas/           # Pydantic request/response schemas + validation
-├── interfaces/        # repository protocols (record, file object)
+├── interfaces/        # repository + object-store protocols
 ├── repositories/      # in-memory + SQLAlchemy implementations
-├── services/          # record + file services, composition root
+├── services/          # record + file + audit services, composition root
 ├── storage/           # object stores (local, memory)
 └── api/               # versioned HTTP API (v1), routers, deps, errors, health
 ```
@@ -97,7 +97,23 @@ src/rescs/
 | 10 | Observability and health | Complete |
 | 11 | Testing and integration | Complete + Automated Tested |
 | 12 | R.I.S.A.R.M.S. readiness | Complete + Automated Tested |
-| 13 | Cleanup, documentation, release | Complete |
+| 13 | Cleanup, documentation, release | Complete (v0.1.0) |
+| 14 | Soft delete & recovery | Complete + Automated Tested (v0.2.0) |
+| 15 | TTL & data expiration | Complete + Automated Tested (v0.2.0) |
+| 16 | Large file & streaming storage | Deferred (not needed: current payloads bounded; no S3 target yet) |
+| 17 | Chunked / resumable uploads | Deferred (streaming alone undecided; no large-file requirement yet) |
+| 18 | Metadata & tagging | Complete + Automated Tested (v0.2.0) |
+| 19 | Advanced search & filtering | Complete + Automated Tested (v0.2.0) |
+| 20 | Bulk operations | Complete + Automated Tested (v0.2.0) |
+| 21 | Storage quotas & governance | Complete + Automated Tested (v0.2.0) |
+| 22 | Audit logging | Complete + Automated Tested (v0.2.0) |
+| 23 | Backup & restore | Deferred (abstraction only; no provider target configured) |
+| 24 | S3-compatible object storage | Deferred (no live endpoint/credentials; seam preserved) |
+| 25 | Encryption & security hardening | Deferred (no new crypto; existing boundaries enforced + tested) |
+| 26 | Rate limiting & abuse protection | Deferred (governance caps cover size/count; no rate limiter yet) |
+| 27 | Performance & DB optimization | Deferred (no measured bottleneck; indexes added for new filters) |
+| 28 | Deployment readiness | Deferred (container/prod validation not performed) |
+| 29 | Endurance & reliability | Partial (bounded automated tests; no 24/7 deployment claimed) |
 
 Live PostgreSQL/Supabase, deployed CORE ↔ RESCS interop, multi-machine
 and endurance validation remain **Ready for External Validation** (see

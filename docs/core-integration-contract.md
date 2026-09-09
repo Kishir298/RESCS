@@ -45,9 +45,11 @@ on `code`, never on the HTTP status alone.
 | 400 | `INVALID_REQUEST` | fix request |
 | 401 | `UNAUTHORIZED` | refresh API key |
 | 403 | `FORBIDDEN` | owner conflict; do not retry |
-| 404 | `NOT_FOUND` | treat storage state as absent |
+| 403 | `QUOTA_EXCEEDED` | quota reached; free resources or retry later |
+| 404 | `NOT_FOUND` | treat storage state as absent (incl. deleted/expired) |
 | 409 | `CONFLICT` | duplicate within namespace; re-check |
 | 412 | `PRECONDITION_FAILED` | re-read, then retry with new etag |
+| 413 | `PAYLOAD_TOO_LARGE` | shrink file/metadata; check configured caps |
 | 422 | `VALIDATION_ERROR` | fix body |
 | 500 | `STORAGE_ERROR` | backend fault; retry after backoff |
 | 503 | `DEPENDENCY_UNAVAILABLE` | database/object store down; retry after backoff |
@@ -77,7 +79,8 @@ namespace: core.memory          key: <source-uri>       value: {sha256, mined, e
    starts at 1) and `created_at`/`updated_at` (UTC). Version bumps on every
    content-changing write.
 2. **Content addressing** — records carry a content `etag`
-   (`sha256(canonical(value, metadata))`); files carry `etag` (from
+   (`sha256(canonical(value, metadata, sorted(tags)))`; untagged records
+   hash exactly as in v0.1); files carry `etag` (from
    `sha256(blob):size`) plus `sha256` and `size` so C.O.R.E. can dedupe
    identical payloads.
 3. **Optimistic concurrency** — mutations accept `If-Match: <etag>`. A stale
@@ -94,6 +97,17 @@ namespace: core.memory          key: <source-uri>       value: {sha256, mined, e
 7. **Owner scoping** — when `RESCS_API_KEY_OWNER` is configured, the key is
    locked to that single owner (single-tenant deployment). Otherwise callers
    supply `owner` (default `system`).
+8. **Recoverable deletion** — `DELETE` tombstones (hidden from ordinary
+   reads, key released); `POST .../restore` recovers; `DELETE .../purge`
+   removes permanently. Restore onto a live key is `409`.
+9. **TTL** — optional `expires_at` (UTC); expired rows read as absent and
+   are reclaimed by writes; physical removal via `POST /api/v1/admin/cleanup`.
+10. **Bulk** — `POST /api/v1/records/bulk` applies bounded batches with
+    per-item statuses; partial failure is explicit.
+11. **Governance** — per-owner quotas and size caps (`RESCS_MAX_*`);
+    exhaustion is `403 QUOTA_EXCEEDED` / `413 PAYLOAD_TOO_LARGE`.
+12. **Audit** — mutations are recorded secret-free and inspectable at
+    `GET /api/v1/admin/audit` (see `docs/lifecycle.md`).
 
 ## C.O.R.E. integration conventions
 
@@ -110,6 +124,6 @@ namespace: core.memory          key: <source-uri>       value: {sha256, mined, e
 
 If C.O.R.E. and R.E.S.C.S. share a PostgreSQL deployment, each keeps its own
 schema and migration story. R.E.S.C.S. touches **only** its own tables
-(`records`, `file_objects`, `schema_info`) and is configured with its own
-`DATABASE_URL`. The API above is the supported integration path; direct
-cross-schema queries are out of contract.
+(`records`, `file_objects`, `audit_events`, `schema_info`) and is configured
+with its own `DATABASE_URL`. The API above is the supported integration path;
+direct cross-schema queries are out of contract.

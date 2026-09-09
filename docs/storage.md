@@ -43,11 +43,18 @@ API are unchanged.
 
 - **Create/upload** — bytes hashed (SHA-256), written to the object store,
   then metadata recorded. If the metadata write fails the blob is cleaned up.
+  Governance caps (`RESCS_MAX_FILE_SIZE`, byte quotas) are enforced first.
 - **Read/download** — metadata read from the repository, bytes read from the
-  store. Metadata without a blob surfaces as `STORAGE_ERROR`.
-- **Delete** — metadata removed first; blob cleanup is best-effort and
-  logged.
-- **List** — paginated metadata listing with owner filtering.
+  store. Metadata without a blob surfaces as `STORAGE_ERROR`. Deleted and
+  expired files read as `404`.
+- **Delete (soft)** — metadata tombstoned (`deleted_at`/`deleted_by`); the
+  blob is **retained** so restore is instant.
+- **Restore** — tombstone cleared (version + 1); refused with `STORAGE_ERROR`
+  if the blob went missing.
+- **Purge** — metadata removed, then blob cleanup (best-effort, logged).
+- **Expiry cleanup** — admin cleanup purges expired metadata and blobs.
+- **List** — paginated metadata listing with owner, tag, MIME, size, time,
+  and deleted/expired filters (see `docs/quotas.md`).
 
 ## Integrity
 

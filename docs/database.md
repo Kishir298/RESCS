@@ -54,9 +54,32 @@ Raw database exceptions never reach API consumers.
 ## Schema management
 
 `SchemaManager.migrate()` is idempotent: it derives DDL from the ORM models,
-creates the `schema_info` table, and stamps the expected schema version.
+creates the `schema_info` table, and stamps the expected schema version
+(current: `0.2.0`).
 Production schemas managed by a dedicated migration tool (such as Alembic)
 should run with `RESCS_AUTO_CREATE_SCHEMA=false`.
+
+### v0.1 → v0.2 upgrade
+
+v0.2 adds nullable `tags` / `expires_at` / `deleted_at` / `deleted_by`
+columns to `records` and `file_objects`, a new `audit_events` table, and
+replaces the full `(namespace, key)` unique constraint with a live-only
+partial unique index (`WHERE deleted_at IS NULL`) so tombstones stop
+reserving keys:
+
+- SQLite: additive `ADD COLUMN`s plus a data-preserving `records` table
+  rebuild (rename → create → copy → drop legacy); covered by
+  `tests/unit/test_db_migration_v02.py`.
+- PostgreSQL: `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS
+  uq_records_namespace_key`, `CREATE UNIQUE INDEX IF NOT EXISTS ...
+  WHERE deleted_at IS NULL` (validated by inspection; live run deferred).
+
+## Tables
+
+- `records`, `file_objects`: storage rows plus lifecycle columns above;
+  indexes on `namespace`, `expires_at`, `deleted_at`.
+- `audit_events`: append-only operation log (see `docs/lifecycle.md`).
+- `schema_info`: single-row version stamp.
 
 ## Secrets
 

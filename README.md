@@ -31,12 +31,14 @@ independently and connected through a stable contract (see
 
 ## Status
 
-v0.1.0 — Phases 1–13 complete (foundation through release readiness).
-Automated suite: unit + API + integration (restart persistence, lifecycle,
-concurrency, owner scoping, error contract, health, observability,
-CORE-consumer contract, bounded endurance). Live PostgreSQL/Supabase,
-deployed CORE ↔ RESCS interop and long-horizon endurance remain Ready for
-External Validation. See `docs/architecture.md` and `CHANGELOG.md`.
+v0.2.0 — Phases 1–13 (v0.1 foundation) plus the v0.2 core-data evolution
+complete: soft delete & recovery, TTL expiration + admin cleanup, tags,
+advanced search & filtering, bulk operations, quotas & governance, and
+persistent audit logging. Streaming/resumable uploads, backups, S3,
+encryption-at-rest, rate limiting, and deployment hardening remain
+deferred (see `docs/architecture.md`). Live PostgreSQL/Supabase, deployed
+CORE ↔ RESCS interop and long-horizon endurance remain Ready for External
+Validation. See `docs/architecture.md` and `CHANGELOG.md`.
 
 ## Stack
 
@@ -65,10 +67,17 @@ src/rescs/
 ├── schemas/           # Pydantic request/response schemas + validation
 ├── interfaces/        # repository + object-store protocols
 ├── repositories/      # in-memory + SQLAlchemy implementations
-├── services/          # record + file services, composition root
+├── services/          # record + file + audit services, composition root
 ├── storage/           # object stores (local, memory)
 └── api/               # versioned HTTP API (v1), routers, deps, errors
 ```
+
+Key v0.2 capabilities: recoverable deletion (`DELETE` → `POST .../restore`
+→ `DELETE .../purge`), record/file `expires_at` TTL with admin cleanup
+(`POST /api/v1/admin/cleanup`), tags + rich list/search filters, bulk
+record operations (`POST /api/v1/records/bulk`), per-owner quotas and size
+caps, and a secret-free audit trail (`GET /api/v1/admin/audit`). Details in
+`docs/lifecycle.md` and `docs/quotas.md`.
 
 Detailed phase-by-phase documentation lives in `docs/`.
 
@@ -94,6 +103,13 @@ committed.
 | `RESCS_STORAGE_DIR` | No | `rescs_storage` | Local object-store directory |
 | `RESCS_LOG_LEVEL` | No | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 | `RESCS_REQUEST_ID_HEADER` | No | `X-Request-ID` | Request correlation header echoed on every response |
+| `RESCS_MAX_RECORDS_PER_OWNER` | No | `0` (unlimited) | Per-owner live-record quota |
+| `RESCS_MAX_FILES_PER_OWNER` | No | `0` (unlimited) | Per-owner live-file quota |
+| `RESCS_MAX_BYTES_PER_OWNER` | No | `0` (unlimited) | Per-owner stored-bytes quota |
+| `RESCS_MAX_FILE_SIZE` | No | `0` (unlimited) | Maximum accepted upload bytes |
+| `RESCS_MAX_METADATA_BYTES` | No | `65536` | Maximum serialized metadata bytes |
+| `RESCS_MAX_BULK_BATCH` | No | `100` | Maximum operations per bulk request (1–1000) |
+| `RESCS_AUDIT_RETENTION_DAYS` | No | `90` | Audit pruning horizon for admin cleanup (`0` = keep) |
 
 ## Running
 

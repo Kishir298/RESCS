@@ -37,9 +37,11 @@ and `/redoc`. Versioned under `/api/v1`.
 | 400 | `INVALID_REQUEST` | malformed request semantics |
 | 401 | `UNAUTHORIZED` | missing/invalid credentials |
 | 403 | `FORBIDDEN` | authenticated but not allowed |
-| 404 | `NOT_FOUND` | unknown resource |
-| 409 | `CONFLICT` | violates uniqueness |
+| 403 | `QUOTA_EXCEEDED` | per-owner quota reached (see `docs/quotas.md`) |
+| 404 | `NOT_FOUND` | unknown resource (incl. soft-deleted/expired via ordinary reads) |
+| 409 | `CONFLICT` | violates uniqueness (incl. restore onto a live key) |
 | 412 | `PRECONDITION_FAILED` | stale `If-Match` etag; re-read and retry |
+| 413 | `PAYLOAD_TOO_LARGE` | file/metadata exceeds configured caps |
 | 422 | `VALIDATION_ERROR` | body fails validation |
 | 500 | `STORAGE_ERROR` / `INTERNAL_ERROR` | storage/backend failure |
 | 503 | `DEPENDENCY_UNAVAILABLE` | database/object store unreachable |
@@ -82,21 +84,46 @@ PATCH /api/v1/records/{id}  -> 200 Record
 Body may contain any of `value`, `metadata`, `namespace`, `key`. Version is
 incremented and the etag recomputed.
 
-### Delete
+### Delete (soft)
 
 ```
 DELETE /api/v1/records/{id} -> 204
 ```
+
+Soft-deletes: metadata is preserved as a tombstone but hidden from ordinary
+reads/lists. See `docs/lifecycle.md`.
+
+### Restore / purge
+
+```
+POST   /api/v1/records/{id}/restore -> 200 Record
+DELETE /api/v1/records/{id}/purge   -> 204
+```
+
+Both honor `If-Match`. Restoring onto a live `(namespace, key)` occupant is
+`409`; restoring a live resource is `400`.
+
+### Bulk
+
+```
+POST /api/v1/records/bulk -> 200 {"results": [...]}
+```
+
+Bounded batch of create/put/delete/restore/purge with per-item statuses;
+partial failure is explicit. See `docs/quotas.md`.
 
 ### List / search
 
 ```
 GET /api/v1/records?namespace=&key_prefix=&owner=&limit=&offset=
 GET /api/v1/records?query=blue&namespace=&owner=&limit=&offset=
+GET /api/v1/records?tags=a&tags=b&created_after=&updated_before=
 ```
 
 `query` performs a case-insensitive substring search across key, value and
-metadata. `key_prefix` filters the key without searching content. Response:
+metadata. `key_prefix` filters the key without searching content. `tags`
+(repeatable) requires all listed tags. `include_deleted` / `include_expired`
+opt into tombstones/expired rows (owner scope still applies). Response:
 
 ```json
 { "items": [Record, ...], "total": 7, "limit": 100, "offset": 0 }
@@ -111,7 +138,8 @@ POST /api/v1/files          -> 201 File (multipart/form-data)
 ```
 
 Field: `upload` (the file bytes). Filename and Content-Type are taken from
-the part. The server computes `size`, `sha256` and `etag`.
+the part. The server computes `size`, `sha256` and `etag`. Optional form
+fields: repeatable `tags`, ISO-8601 `expires_at`.
 
 ### Metadata
 
@@ -128,17 +156,38 @@ GET /api/v1/files/{id}/content -> 200 bytes
 Response headers: `Content-Type`, `Content-Disposition`, `ETag`,
 `X-File-SHA256`, `X-File-Size`.
 
-### Delete
+### Delete (soft)
 
 ```
-DELETE /api/v1/files/{id}   -> 204
+DELETE /api/v1/files/{id}         -> 204
+POST   /api/v1/files/{id}/restore -> 200 File
+DELETE /api/v1/files/{id}/purge   -> 204
 ```
+
+Soft delete retains the blob for instant restore; purge removes metadata
+and blob. Restoring a file whose blob is missing is `500 STORAGE_ERROR`.
 
 ### List
 
 ```
-GET /api/v1/files?owner=&limit=&offset=
+GET /api/v1/files?owner=&tags=&mime_type=&size_min=&size_max=&limit=&offset=
 ```
+
+Time-window (`created_after/before`, `updated_after/before`) and
+`include_deleted` / `include_expired` filters mirror the record API.
+
+## Administration
+
+```
+POST /api/v1/admin/cleanup            -> 200 {dry_run, records_purged, files_purged, audit_pruned}
+GET  /api/v1/admin/audit?...          -> 200 AuditPage
+GET  /api/v1/admin/records/deleted... -> 200 RecordPage
+GET  /api/v1/admin/files/deleted...   -> 200 FileObjectPage
+```
+
+Cleanup accepts `{"dry_run": bool, "batch": 1..5000}` and purges expired
+records/files plus audit events older than `RESCS_AUDIT_RETENTION_DAYS`.
+See `docs/lifecycle.md`.
 
 ## Health
 
@@ -165,10 +214,16 @@ GET /health         -> full status (service + version + checks)
 ```
 Record {
   id, namespace, key, value, metadata, owner,
-  version, idempotency_key, etag, created_at, updated_at
+  version, idempotency_key, etag, created_at, updated_at,
+  tags, expires_at, deleted_at, deleted_by
 }
 File {
   id, filename, mime_type, size, storage_path, sha256, metadata, owner,
-  version, idempotency_key, etag, created_at, updated_at
+  version, idempotency_key, etag, created_at, updated_at,
+  tags, expires_at, deleted_at, deleted_by
+}
+Audit {
+  id, timestamp, operation, resource_type, resource_id, owner,
+  request_id, outcome, error_code
 }
 ```

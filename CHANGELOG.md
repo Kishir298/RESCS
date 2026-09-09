@@ -4,6 +4,71 @@ All notable changes to R.E.S.C.S. are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.0]
+
+### Added - Phase 14 (soft delete & recovery)
+
+- Tombstoned deletion for records and files (`deleted_at`/`deleted_by`,
+  version + 1); ordinary reads/lists treat tombstones as `404`
+- `POST .../restore` (409 on live-key collision, `If-Match` supported) and
+  `DELETE .../purge` (permanent; file purge reclaims the blob)
+- Live-only `(namespace, key)` uniqueness: partial unique index on
+  PostgreSQL/SQLite plus application-level guards; keys reusable while a
+  tombstone exists
+- Admin recovery listings (`/admin/records/deleted`, `/admin/files/deleted`,
+  `?include_deleted=true`) with owner scoping
+
+### Added - Phase 15 (TTL & data expiration)
+
+- Optional UTC `expires_at` on records/files (past values rejected);
+  expired rows read as absent and are transparently reclaimed by writes
+- Explicit `POST /api/v1/admin/cleanup` (`dry_run`, bounded `batch`) purging
+  expired metadata + blobs; no background scheduler
+
+### Added - Phase 18 (metadata & tagging)
+
+- `tags` on records/files (≤32, charset-validated, 422 otherwise), filterable
+  (all-match) and part of the record ETag (sorted; untagged hashes unchanged)
+
+### Added - Phase 19 (advanced search & filtering)
+
+- Time-window, MIME, size-range, tag, and deleted/expired filters on list and
+  search with deterministic ordering; owner scoping on every filter
+
+### Added - Phase 20 (bulk operations)
+
+- `POST /api/v1/records/bulk` bounded batches (default max 100) with
+  per-item statuses and explicit partial-failure semantics
+
+### Added - Phase 21 (quotas & governance)
+
+- `RESCS_MAX_{RECORDS,FILES,BYTES}_PER_OWNER`, `MAX_FILE_SIZE`,
+  `MAX_METADATA_BYTES`, `MAX_BULK_BATCH` enforced server-side
+  (`403 QUOTA_EXCEEDED` / `413 PAYLOAD_TOO_LARGE`); live non-expired
+  accounting per owner
+
+### Added - Phase 22 (audit logging)
+
+- Secret-free persistent `audit_events` trail (operation, resource, owner,
+  request ID, outcome, error code) with `GET /api/v1/admin/audit` and
+  retention pruning via admin cleanup
+
+### Changed
+
+- v0.1 → v0.2 additive migration: new nullable columns, `audit_events`
+  table, live-only unique index (SQLite rebuild covered by
+  `tests/unit/test_db_migration_v02.py`; PostgreSQL statements validated by
+  inspection, live run deferred)
+- `DELETE` endpoints now soft-delete (documented behavior change from v0.1)
+- Version 0.1.0 → 0.2.0
+
+### Validation status
+
+- Automated integration COMPLETE (soft delete, TTL, tags, search, bulk,
+  quotas, audit, migration, backend parity)
+- READY FOR VALIDATION: live PostgreSQL migration run, S3, deployment,
+  multi-machine, 24/7 endurance
+
 ## Unreleased
 
 ### Added - Phase 1 (foundation)
