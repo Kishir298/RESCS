@@ -79,7 +79,7 @@ def test_v01_sqlite_upgrades_without_data_loss(tmp_path):
     try:
         manager = SchemaManager(engine)
         manager.migrate()
-        assert manager.applied_version() == "0.2.0"
+        assert manager.applied_version() == SchemaManager.SCHEMA_VERSION
         with engine.connect() as connection:
             row = connection.execute(
                 text(
@@ -100,7 +100,7 @@ def test_v01_sqlite_upgrades_without_data_loss(tmp_path):
             assert "audit_events" in names
         # Second migrate is idempotent.
         manager.migrate()
-        assert manager.applied_version() == "0.2.0"
+        assert manager.applied_version() == SchemaManager.SCHEMA_VERSION
     finally:
         engine.dispose()
 
@@ -114,7 +114,7 @@ def test_fresh_database_gets_v02_schema(tmp_path):
     try:
         manager = SchemaManager(engine)
         manager.migrate()
-        assert manager.applied_version() == "0.2.0"
+        assert manager.applied_version() == SchemaManager.SCHEMA_VERSION
         with engine.connect() as connection:
             indexes = connection.execute(
                 text("SELECT name, sql FROM sqlite_master WHERE type='index'")

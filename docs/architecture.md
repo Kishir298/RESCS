@@ -99,20 +99,20 @@ src/rescs/
 | 12 | R.I.S.A.R.M.S. readiness | Complete + Automated Tested |
 | 13 | Cleanup, documentation, release | Complete (v0.1.0) |
 | 14 | Soft delete & recovery | Complete + Automated Tested (v0.2.0) |
-| 15 | TTL & data expiration | Complete + Automated Tested (v0.2.0) |
-| 16 | Large file & streaming storage | Deferred (not needed: current payloads bounded; no S3 target yet) |
-| 17 | Chunked / resumable uploads | Deferred (streaming alone undecided; no large-file requirement yet) |
-| 18 | Metadata & tagging | Complete + Automated Tested (v0.2.0) |
+| 15 | TTL & data expiration (`expires_at` + `ttl_seconds`, max-TTL) | Complete + Automated Tested (v0.3.0) |
+| 16 | Large file & streaming storage | Complete + Automated Tested (v0.3.0) |
+| 17 | Chunked / resumable uploads (`/api/v1/uploads`) | Complete + Automated Tested (v0.3.0) |
+| 18 | Metadata & tagging (50/resource) | Complete + Automated Tested (v0.3.0) |
 | 19 | Advanced search & filtering | Complete + Automated Tested (v0.2.0) |
-| 20 | Bulk operations | Complete + Automated Tested (v0.2.0) |
-| 21 | Storage quotas & governance | Complete + Automated Tested (v0.2.0) |
-| 22 | Audit logging | Complete + Automated Tested (v0.2.0) |
-| 23 | Backup & restore | Deferred (abstraction only; no provider target configured) |
-| 24 | S3-compatible object storage | Deferred (no live endpoint/credentials; seam preserved) |
-| 25 | Encryption & security hardening | Deferred (no new crypto; existing boundaries enforced + tested) |
-| 26 | Rate limiting & abuse protection | Deferred (governance caps cover size/count; no rate limiter yet) |
-| 27 | Performance & DB optimization | Deferred (no measured bottleneck; indexes added for new filters) |
-| 28 | Deployment readiness | Deferred (container/prod validation not performed) |
+| 20 | Bulk operations (owner-isolated, partial-success) | Complete + Automated Tested (v0.3.0) |
+| 21 | Storage quotas & governance (race-safe) | Complete + Automated Tested (v0.3.0) |
+| 22 | Audit logging | Complete + Automated Tested (v0.3.0, extended events) |
+| 23 | Backup & restore (tooling + docs) | Complete (tooling) + Automated Tested; live DR drill external |
+| 24 | S3-compatible object storage (abstraction + fake) | Complete + Automated Tested; live S3 external |
+| 25 | Encryption & security hardening (delegated model) | Complete (docs) |
+| 26 | Rate limiting & abuse protection (in-memory) | Complete + Automated Tested (v0.3.0); distributed limiter external |
+| 27 | Performance & DB optimization (targeted indexes) | Complete (indexes + migration) |
+| 28 | Deployment readiness (docs + health) | Complete (docs); prod deploy external |
 | 29 | Endurance & reliability | Partial (bounded automated tests; no 24/7 deployment claimed) |
 
 Live PostgreSQL/Supabase, deployed CORE ↔ RESCS interop, multi-machine

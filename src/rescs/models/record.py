@@ -26,6 +26,8 @@ class Record(Base):
             sqlite_where=text("deleted_at IS NULL"),
             postgresql_where=text("deleted_at IS NULL"),
         ),
+        Index("ix_records_owner_updated", "owner", "updated_at"),
+        Index("ix_records_owner_expires", "owner", "expires_at"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

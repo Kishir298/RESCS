@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, DateTime, Integer, String
+from sqlalchemy import JSON, BigInteger, DateTime, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rescs.db.base import Base
@@ -13,6 +13,10 @@ from rescs.domain import FileObjectData, ensure_utc, utcnow
 
 class FileObject(Base):
     __tablename__ = "file_objects"
+    __table_args__ = (
+        Index("ix_file_objects_owner_updated", "owner", "updated_at"),
+        Index("ix_file_objects_owner_size", "owner", "size"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)

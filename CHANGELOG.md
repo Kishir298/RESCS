@@ -4,6 +4,27 @@ All notable changes to R.E.S.C.S. are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.0]
+
+### Added
+
+- TTL `ttl_seconds` wiring for records/files (+ file form param), `RESCS_MAX_TTL_SECONDS` enforcement, mutual-exclusion with `expires_at`
+- Tags raised 32 → 50/resource (case-sensitive, strip, reject-empty)
+- Streaming uploads/downloads: `ObjectStore.put_stream/get_stream/size`, `FileService.create_stream/download_stream`, spool-bounded `POST /files`, `StreamingResponse` above `RESCS_STREAMING_THRESHOLD_BYTES`
+- Resumable uploads `/api/v1/uploads` (create/chunk/status/finalize/cancel, 64KiB–64MiB chunks, 24h expiry, checksum verify, owner isolation, `admin/cleanup uploads_cleaned`)
+- Bulk owner-isolation per item (403) + documented partial-success (non-atomic); quota post-write race guards
+- S3 abstraction: `RESCS_STORAGE_BACKEND=local|memory|s3`, `FakeS3ObjectStore` for tests, `S3ObjectStore` (boto3) for live, `build_object_store` selector
+- Backup tooling `scripts/rescs_backup.py` + `docs/backups.md` (RPO/RTO, manifest verify)
+- `docs/encryption.md` (delegated at-rest model), `docs/deployment.md`, `docs/uploads.md`, `docs/rate-limiting.md`
+- In-memory rate limiting (`RESCS_RATE_LIMIT_ENABLED`, 429 + Retry-After, health exempt)
+- Perf indexes (`ix_records_owner_updated/expires`, `ix_file_objects_owner_updated/size`) + schema 0.3.0 (`upload_sessions` table)
+- Tests: `test_uploads.py`, `test_storage_s3.py`, `test_rate_limit.py`, `test_reliability_v03.py`; migration tests track `SCHEMA_VERSION`
+
+### Validation status
+
+- Automated integration COMPLETE for all implementable objectives
+- EXTERNAL VALIDATION REQUIRED: live PostgreSQL, real S3, prod HTTPS deploy, multi-machine, 24/7 endurance, live DR drill
+
 ## [0.2.0]
 
 ### Added - Phase 14 (soft delete & recovery)

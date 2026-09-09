@@ -31,13 +31,15 @@ independently and connected through a stable contract (see
 
 ## Status
 
-v0.2.0 — Phases 1–13 (v0.1 foundation) plus the v0.2 core-data evolution
-complete: soft delete & recovery, TTL expiration + admin cleanup, tags,
-advanced search & filtering, bulk operations, quotas & governance, and
-persistent audit logging. Streaming/resumable uploads, backups, S3,
-encryption-at-rest, rate limiting, and deployment hardening remain
-deferred (see `docs/architecture.md`). Live PostgreSQL/Supabase, deployed
-CORE ↔ RESCS interop and long-horizon endurance remain Ready for External
+v0.3.0 — v0.2 foundation plus production evolution: soft delete & recovery,
+TTL/`ttl_seconds` expiration + admin cleanup (records/files/uploads), tags
+(50/resource), advanced search, bulk (owner-isolated, partial-success),
+race-safe quotas, audit trail, streaming uploads/downloads
+(`RESCS_STREAMING_THRESHOLD_BYTES`), resumable uploads (`/api/v1/uploads`),
+S3-compatible backend abstraction (+ fake), backup tooling
+(`scripts/rescs_backup.py`), delegated encryption model, in-memory rate
+limiting, and deployment docs. Live PostgreSQL/Supabase, real S3,
+deployed CORE ↔ RESCS interop and 24/7 endurance remain Ready for External
 Validation. See `docs/architecture.md` and `CHANGELOG.md`.
 
 ## Stack
@@ -67,8 +69,8 @@ src/rescs/
 ├── schemas/           # Pydantic request/response schemas + validation
 ├── interfaces/        # repository + object-store protocols
 ├── repositories/      # in-memory + SQLAlchemy implementations
-├── services/          # record + file + audit services, composition root
-├── storage/           # object stores (local, memory)
+├── services/          # record + file + upload + audit services, composition root
+├── storage/           # object stores (local, memory, s3/fake)
 └── api/               # versioned HTTP API (v1), routers, deps, errors
 ```
 
