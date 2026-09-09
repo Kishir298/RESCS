@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Query, Response
 
 from rescs.api.deps import get_settings, get_services, parse_etag
 from rescs.config import Settings
-from rescs.schemas.record import RecordCreate, RecordPage, RecordRead, RecordUpdate
+from rescs.schemas.record import (
+    BulkRequest,
+    BulkResponse,
+    BulkResultItem,
+    RecordCreate,
+    RecordPage,
+    RecordRead,
+    RecordUpdate,
+)
 from rescs.security import (
     assert_principal_is_owner,
     enforce_owner,
@@ -33,6 +42,13 @@ def _page(
     query: str | None,
     limit: int,
     offset: int,
+    tags: list[str] | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    updated_after: datetime | None = None,
+    updated_before: datetime | None = None,
+    include_deleted: bool = False,
+    include_expired: bool = False,
 ) -> RecordPage:
     if query:
         page = services.records.search(
@@ -41,6 +57,9 @@ def _page(
             owner=owner,
             limit=limit,
             offset=offset,
+            tags=tags,
+            include_deleted=include_deleted,
+            include_expired=include_expired,
         )
     else:
         page = services.records.list(
@@ -49,6 +68,13 @@ def _page(
             owner=owner,
             limit=limit,
             offset=offset,
+            tags=tags,
+            created_after=created_after,
+            created_before=created_before,
+            updated_after=updated_after,
+            updated_before=updated_before,
+            include_deleted=include_deleted,
+            include_expired=include_expired,
         )
     return RecordPage(
         items=[RecordRead.from_domain(item) for item in page.items],
@@ -106,6 +132,13 @@ def list_records(
     key_prefix: str | None = Query(default=None),
     owner: str | None = Query(default=None),
     query: str | None = Query(default=None, description="Full-text-ish search"),
+    tags: list[str] | None = Query(default=None),
+    created_after: datetime | None = Query(default=None),
+    created_before: datetime | None = Query(default=None),
+    updated_after: datetime | None = Query(default=None),
+    updated_before: datetime | None = Query(default=None),
+    include_deleted: bool = Query(default=False),
+    include_expired: bool = Query(default=False),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> RecordPage:
@@ -118,6 +151,13 @@ def list_records(
         query=query,
         limit=limit,
         offset=offset,
+        tags=tags,
+        created_after=created_after,
+        created_before=created_before,
+        updated_after=updated_after,
+        updated_before=updated_before,
+        include_deleted=include_deleted,
+        include_expired=include_expired,
     )
 
 
@@ -129,6 +169,20 @@ def _authorized_record(
     settings: Settings,
 ) -> Any:
     record = services.records.get(record_id)
+    assert_principal_is_owner(
+        record_owner=record.owner, principal=principal, settings=settings
+    )
+    return record
+
+
+def _authorized_record_including_deleted(
+    services: Services,
+    record_id: str,
+    *,
+    principal: str,
+    settings: Settings,
+) -> Any:
+    record = services.records.get_including_deleted(record_id)
     assert_principal_is_owner(
         record_owner=record.owner, principal=principal, settings=settings
     )
@@ -179,3 +233,67 @@ def delete_record(
 ) -> None:
     _authorized_record(services, record_id, principal=principal, settings=settings)
     services.records.delete(record_id, expected_etag=parse_etag(if_match))
+
+
+@router.post("/{record_id}/restore", response_model=RecordRead)
+def restore_record(
+    record_id: str,
+    response: Response,
+    services: Services = Depends(get_services),
+    settings: Settings = Depends(get_settings),
+    principal: str = Depends(require_api_key),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> RecordRead:
+    _authorized_record_including_deleted(
+        services, record_id, principal=principal, settings=settings
+    )
+    record = RecordRead.from_domain(
+        services.records.restore(
+            record_id, actor=principal, expected_etag=parse_etag(if_match)
+        )
+    )
+    _apply_etag_header(response, record)
+    return record
+
+
+@router.delete("/{record_id}/purge", status_code=204)
+def purge_record(
+    record_id: str,
+    services: Services = Depends(get_services),
+    settings: Settings = Depends(get_settings),
+    principal: str = Depends(require_api_key),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> None:
+    _authorized_record_including_deleted(
+        services, record_id, principal=principal, settings=settings
+    )
+    services.records.purge(
+        record_id, actor=principal, expected_etag=parse_etag(if_match)
+    )
+
+
+@router.post("/bulk", response_model=BulkResponse)
+def bulk_records(
+    payload: BulkRequest,
+    services: Services = Depends(get_services),
+    settings: Settings = Depends(get_settings),
+    principal: str = Depends(require_api_key),
+) -> BulkResponse:
+    operations: list[dict[str, Any]] = []
+    for item in payload.operations:
+        entry: dict[str, Any] = {"op": item.op}
+        if item.id is not None:
+            entry["id"] = item.id
+        if item.record is not None:
+            record_payload = item.record
+            record_payload.owner = enforce_owner(
+                requested=record_payload.owner,
+                principal=principal,
+                settings=settings,
+            )
+            entry["record"] = record_payload.model_dump()
+        if item.if_match is not None:
+            entry["if_match"] = parse_etag(item.if_match)
+        operations.append(entry)
+    results = services.records.bulk(operations, actor=principal)
+    return BulkResponse(results=[BulkResultItem(**result) for result in results])

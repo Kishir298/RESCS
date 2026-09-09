@@ -16,11 +16,14 @@ from rescs.config import Settings
 RESERVED_NAMESPACE_PREFIXES = ("core.", "rescs.")
 
 CAPABILITIES: dict[str, list[str]] = {
-    "records": ["create", "put", "get", "update", "delete", "list", "search"],
-    "files": ["upload", "metadata", "download", "delete", "list"],
-    "consistency": ["version", "etag", "if_match", "idempotency"],
+    "records": ["create", "put", "get", "update", "delete", "restore", "purge", "bulk", "list", "search"],
+    "files": ["upload", "metadata", "download", "delete", "restore", "purge", "list"],
+    "consistency": ["version", "etag", "if_match", "idempotency", "soft_delete", "ttl"],
+    "organization": ["tags", "filters", "deleted_listing"],
+    "governance": ["quotas", "bulk_bounds", "metadata_caps"],
     "security": ["x_api_key", "owner_scoping"],
     "health": ["live", "ready"],
+    "operations": ["cleanup", "audit"],
 }
 
 CONTRACT_DOC = "docs/core-integration-contract.md"
@@ -52,6 +55,20 @@ def build_contract(settings: Settings) -> dict[str, Any]:
                 "error": {"code": "str", "message": "str", "details": "object|null"}
             },
             "sample": {"code": "NOT_FOUND", "message": "record not found"},
+            "codes": [
+                "INVALID_REQUEST",
+                "UNAUTHORIZED",
+                "FORBIDDEN",
+                "NOT_FOUND",
+                "CONFLICT",
+                "PRECONDITION_FAILED",
+                "PAYLOAD_TOO_LARGE",
+                "QUOTA_EXCEEDED",
+                "VALIDATION_ERROR",
+                "STORAGE_ERROR",
+                "INTERNAL_ERROR",
+                "DEPENDENCY_UNAVAILABLE",
+            ],
         },
         "etag": {
             "canonical": "hex-sha256",
@@ -60,7 +77,11 @@ def build_contract(settings: Settings) -> dict[str, Any]:
                 "PATCH /api/v1/records/{id}",
                 "PUT /api/v1/records",
                 "DELETE /api/v1/records/{id}",
+                "POST /api/v1/records/{id}/restore",
+                "DELETE /api/v1/records/{id}/purge",
                 "DELETE /api/v1/files/{id}",
+                "POST /api/v1/files/{id}/restore",
+                "DELETE /api/v1/files/{id}/purge",
             ],
         },
         "blob_integrity": {
@@ -70,8 +91,13 @@ def build_contract(settings: Settings) -> dict[str, Any]:
         "capabilities": CAPABILITIES,
         "endpoints": {
             "records": "/api/v1/records",
+            "records_bulk": "/api/v1/records/bulk",
             "files": "/api/v1/files",
             "contract": f"/api/{API_VERSION}/contract",
             "health": ["/health/live", "/health/ready"],
+            "admin_cleanup": f"/api/{API_VERSION}/admin/cleanup",
+            "admin_audit": f"/api/{API_VERSION}/admin/audit",
+            "admin_deleted_records": f"/api/{API_VERSION}/admin/records/deleted",
+            "admin_deleted_files": f"/api/{API_VERSION}/admin/files/deleted",
         },
     }

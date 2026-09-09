@@ -63,11 +63,25 @@ def test_metadata_without_blob_raises_storage_error(service):
         service.download(created.id)
 
 
-def test_delete_removes_metadata_and_blob(service):
+def test_delete_soft_deletes_and_keeps_blob_for_restore(service):
     created = service.create(make_payload(), b"x")
     service.delete(created.id)
     with pytest.raises(NotFoundError):
         service.get(created.id)
+    # Soft delete retains the blob so restore is instant.
+    assert service._store.exists(created.id)
+    tombstone = service.get_including_deleted(created.id)
+    assert tombstone.deleted_at is not None
+    restored = service.restore(created.id)
+    assert restored.deleted_at is None
+    assert service.get(created.id).id == created.id
+
+
+def test_purge_removes_metadata_and_blob(service):
+    created = service.create(make_payload(), b"x")
+    service.purge(created.id)
+    with pytest.raises(NotFoundError):
+        service.get_including_deleted(created.id)
     assert not service._store.exists(created.id)
 
 
