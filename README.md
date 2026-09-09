@@ -112,6 +112,17 @@ committed.
 | `RESCS_MAX_METADATA_BYTES` | No | `65536` | Maximum serialized metadata bytes |
 | `RESCS_MAX_BULK_BATCH` | No | `100` | Maximum operations per bulk request (1–1000) |
 | `RESCS_AUDIT_RETENTION_DAYS` | No | `90` | Audit pruning horizon for admin cleanup (`0` = keep) |
+| `RESCS_API_KEY_OWNER` | No | — (multi-owner) | Single-owner lock mode |
+| `RESCS_AUTO_CREATE_SCHEMA` | No | `true` | Create schema on startup (`false` in prod with managed migrations) |
+| `RESCS_MAX_TTL_SECONDS` | No | `31536000` | Maximum accepted TTL seconds (`0` = unlimited) |
+| `RESCS_STREAMING_THRESHOLD_BYTES` | No | `8388608` | Size at/above which downloads stream |
+| `RESCS_STORAGE_BACKEND` | No | `local` | `local`, `memory`, or `s3` (s3 needs `boto3`, see `docs/deployment.md`) |
+| `RESCS_S3_ENDPOINT` / `RESCS_S3_BUCKET` / `RESCS_S3_REGION` | No | — | S3-compatible backend settings (never commit keys) |
+| `RESCS_S3_ACCESS_KEY` / `RESCS_S3_SECRET_KEY` / `RESCS_S3_PATH_PREFIX` | No | — | S3 credentials/prefix via env/secret manager only |
+| `RESCS_RATE_LIMIT_ENABLED` | No | `false` | In-memory single-instance limiter (`true` to enable) |
+| `RESCS_RATE_LIMIT_GENERAL_PER_MINUTE` | No | `100` | General bucket limit |
+| `RESCS_RATE_LIMIT_WRITES_PER_MINUTE` | No | `60` | Write bucket limit |
+| `RESCS_RATE_LIMIT_UPLOADS_PER_MINUTE` | No | `20` | Upload bucket limit |
 
 ## Running
 

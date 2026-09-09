@@ -52,14 +52,23 @@ def _database_check(app: FastAPI) -> str:
 
 
 def _storage_check(app: FastAPI) -> str:
+    probe = f"{PROBE_KEY}_{uuid.uuid4().hex}"
     try:
         store = app.state.services.files.object_store
-        probe = f"{PROBE_KEY}_{uuid.uuid4().hex}"
         store.put(probe, b"ok")
-        healthy = store.get(probe) == b"ok"
-        store.delete(probe)
+        try:
+            healthy = store.get(probe) == b"ok"
+        finally:
+            try:
+                store.delete(probe)
+            except Exception:
+                pass
         return "ok" if healthy else "down"
     except Exception:
+        try:
+            app.state.services.files.object_store.delete(probe)
+        except Exception:
+            pass
         return "down"
 
 

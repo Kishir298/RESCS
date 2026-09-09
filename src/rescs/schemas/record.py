@@ -157,7 +157,7 @@ class BulkItem(BaseModel):
 
 
 class BulkRequest(BaseModel):
-    operations: list[BulkItem] = Field(min_length=1)
+    operations: list[BulkItem] = Field(min_length=1, max_length=1000)
 
 
 class BulkResultItem(BaseModel):

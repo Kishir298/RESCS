@@ -17,6 +17,7 @@ class UploadSession(Base):
         Index("ix_upload_sessions_owner", "owner"),
         Index("ix_upload_sessions_status", "status"),
         Index("ix_upload_sessions_expires_at", "expires_at"),
+        Index("ix_upload_sessions_status_expires", "status", "expires_at"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

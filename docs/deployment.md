@@ -18,8 +18,9 @@ python -m uvicorn rescs.main:create_app --factory --host 0.0.0.0 --port 8000
 ## Checks
 
 - HTTPS at ingress, request IDs (`X-Request-ID`) logged, no secrets in logs.
-- PostgreSQL: `postgresql+psycopg://` URL, `pool_pre_ping`, gated compat test via `RESCS_INTEGRATION_DATABASE_URL`.
-- S3: `RESCS_STORAGE_BACKEND=s3` + endpoint/bucket/region/keys; local remains default.
+- PostgreSQL: `postgresql+psycopg://` URL, `pool_pre_ping`, gated compat test via `RESCS_INTEGRATION_DATABASE_URL` (test-only env, not app config).
+- S3: `RESCS_STORAGE_BACKEND=s3` + endpoint/bucket/region/keys; local remains default. Live S3 needs `pip install boto3` (optional, not in base `requirements.txt`); without it the backend fails fast with `STORAGE_ERROR`.
+- packaging: `requirements.txt` is the runtime source of truth (`pyproject.toml` has no `dependencies=[]` yet — do not `pip install -e .` expecting deps).
 - Backups daily + 7-day retention (`docs/backups.md`); encryption per `docs/encryption.md`.
 
 Production multi-instance, real S3/HTTPS, and 24/7 endurance are **external validation**.

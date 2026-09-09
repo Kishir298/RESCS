@@ -8,14 +8,17 @@ multi-instance deployments need a shared backend (Redis) — external work.
 
 from __future__ import annotations
 
+import hashlib
 import time
-from collections import deque
+from collections import OrderedDict, deque
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from rescs.config import Settings
+
+MAX_TRACKED_KEYS = 10000
 
 
 def _bucket(path: str, method: str) -> str:
@@ -30,7 +33,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, settings: Settings):
         super().__init__(app)
         self._settings = settings
-        self._hits: dict[str, deque[float]] = {}
+        # Hashed keys only (never raw API keys); bounded LRU-ish map.
+        self._hits: OrderedDict[str, deque[float]] = OrderedDict()
 
     async def dispatch(self, request: Request, call_next):
         settings = self._settings
@@ -46,9 +50,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         limit = limits[bucket]
         if not limit:
             return await call_next(request)
-        key = f"{request.headers.get('X-API-Key', 'anon')}:{bucket}"
+        raw_key = request.headers.get("X-API-Key", "anon")
+        key = hashlib.sha256(f"{raw_key}:{bucket}".encode()).hexdigest()
         now = time.monotonic()
-        window = self._hits.setdefault(key, deque())
+        window = self._hits.get(key)
+        if window is None:
+            window = deque()
+            self._hits[key] = window
+        else:
+            # LRU refresh + bound: evict oldest keys beyond cap.
+            self._hits.move_to_end(key)
+            while len(self._hits) > MAX_TRACKED_KEYS:
+                self._hits.popitem(last=False)
         while window and window[0] <= now - 60:
             window.popleft()
         if len(window) >= limit:

@@ -4,6 +4,16 @@ All notable changes to R.E.S.C.S. are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Resumable finalize now streams (`get_stream` → incremental SHA-256 → `put_stream`, no `b"".join`), enforces file quotas/metadata caps with post-write rollback, single-winner CAS + thread lock (retry → `409`, concurrent → one winner)
+- Upload chunk rules: reject empty chunks, enforce exact `chunk_size` for intermediate chunks; service-level owner-lock checks in chunk/finalize/cancel; cancel no longer touches storage on unknown ids; glob metachars escaped in chunk probing
+- Backup tool: `--verify` re-hashing, atomic staging + rename, exit `2` on missing DB/storage/hash mismatch/existing out, recursive blob copy with `path/mtime/total_bytes`/versions, real `pg_dump` execution (no silent success)
+- Rate limiter: SHA-256-hashed keys, 10k bounded LRU map (was unbounded raw-key dict)
+- Health probe: `try/finally` blob cleanup; bulk schema `max_length=1000` fail-fast; `upload_sessions (status, expires_at)` composite index
+
 ## [0.3.0]
 
 ### Added
