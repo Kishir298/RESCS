@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from rescs.api import API_VERSION
 from rescs.api.deps import register_health_checks
 from rescs.api.errors import register_exception_handlers
-from rescs.api.routers import admin, contract, files, health, records
+from rescs.api.routers import admin, contract, files, health, records, uploads
 from rescs.config import Settings, get_settings
 from rescs.db.bootstrap import Database, bootstrap_database
 from rescs.health import HealthService
@@ -75,6 +75,9 @@ def create_app(
         ObservabilityMiddleware,
         settings=settings,
     )
+    from rescs.rate_limit import RateLimitMiddleware
+
+    app.add_middleware(RateLimitMiddleware, settings=settings)
 
     register_exception_handlers(app)
 
@@ -92,5 +95,6 @@ def create_app(
     app.include_router(contract.router, prefix=f"/api/{API_VERSION}")
     app.include_router(records.router, prefix=f"/api/{API_VERSION}")
     app.include_router(files.router, prefix=f"/api/{API_VERSION}")
+    app.include_router(uploads.router, prefix=f"/api/{API_VERSION}")
 
     return app

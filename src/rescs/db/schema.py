@@ -15,7 +15,7 @@ class SchemaManager:
     Alembic on top of this foundation.
     """
 
-    SCHEMA_VERSION = "0.2.0"
+    SCHEMA_VERSION = "0.3.0"
 
     # v0.2 additive columns (records + file_objects). All nullable or
     # defaulted so existing rows migrate without data loss.

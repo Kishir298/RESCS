@@ -17,7 +17,8 @@ RESERVED_NAMESPACE_PREFIXES = ("core.", "rescs.")
 
 CAPABILITIES: dict[str, list[str]] = {
     "records": ["create", "put", "get", "update", "delete", "restore", "purge", "bulk", "list", "search"],
-    "files": ["upload", "metadata", "download", "delete", "restore", "purge", "list"],
+    "files": ["upload", "metadata", "download", "delete", "restore", "purge", "list", "streaming"],
+    "uploads": ["create", "chunk", "status", "finalize", "cancel"],
     "consistency": ["version", "etag", "if_match", "idempotency", "soft_delete", "ttl"],
     "organization": ["tags", "filters", "deleted_listing"],
     "governance": ["quotas", "bulk_bounds", "metadata_caps"],
@@ -64,6 +65,7 @@ def build_contract(settings: Settings) -> dict[str, Any]:
                 "PRECONDITION_FAILED",
                 "PAYLOAD_TOO_LARGE",
                 "QUOTA_EXCEEDED",
+                "RATE_LIMITED",
                 "VALIDATION_ERROR",
                 "STORAGE_ERROR",
                 "INTERNAL_ERROR",
@@ -93,6 +95,7 @@ def build_contract(settings: Settings) -> dict[str, Any]:
             "records": "/api/v1/records",
             "records_bulk": "/api/v1/records/bulk",
             "files": "/api/v1/files",
+            "uploads": "/api/v1/uploads",
             "contract": f"/api/{API_VERSION}/contract",
             "health": ["/health/live", "/health/ready"],
             "admin_cleanup": f"/api/{API_VERSION}/admin/cleanup",

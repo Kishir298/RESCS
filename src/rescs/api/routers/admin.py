@@ -38,6 +38,7 @@ class CleanupResponse(BaseModel):
     records_purged: int
     files_purged: int
     audit_pruned: int
+    uploads_cleaned: int = 0
 
 
 @router.post("/cleanup", response_model=CleanupResponse)
@@ -54,9 +55,11 @@ def run_cleanup(
             records_purged=services.records.count_expired(limit=payload.batch),
             files_purged=services.files.count_expired(limit=payload.batch),
             audit_pruned=0,
+            uploads_cleaned=len(services.uploads._sessions.list_expired(now, limit=payload.batch)),
         )
     records_purged = services.records.cleanup_expired(actor=principal, limit=payload.batch)
     files_purged = services.files.cleanup_expired(actor=principal, limit=payload.batch)
+    uploads_cleaned = services.uploads.cleanup_expired(actor=principal, limit=payload.batch)
     audit_pruned = 0
     if settings.audit_retention_days:
         cutoff = now - timedelta(days=settings.audit_retention_days)
@@ -66,6 +69,7 @@ def run_cleanup(
         records_purged=records_purged,
         files_purged=files_purged,
         audit_pruned=audit_pruned,
+        uploads_cleaned=uploads_cleaned,
     )
 
 

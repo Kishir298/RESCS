@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from rescs.domain import AuditData, FileObjectData, Page, RecordData
+from rescs.domain import AuditData, FileObjectData, Page, RecordData, UploadSessionData
 
 
 @runtime_checkable
@@ -149,3 +149,16 @@ class AuditRepository(Protocol):
     ) -> Page[AuditData]: ...
 
     def prune_before(self, cutoff: datetime) -> int: ...
+
+
+@runtime_checkable
+class UploadSessionRepository(Protocol):
+    def create(self, session: UploadSessionData) -> UploadSessionData: ...
+
+    def get(self, session_id: str) -> UploadSessionData: ...
+
+    def update(self, session: UploadSessionData) -> UploadSessionData: ...
+
+    def delete(self, session_id: str) -> None: ...
+
+    def list_expired(self, before: datetime, limit: int = 100) -> list[UploadSessionData]: ...

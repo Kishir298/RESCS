@@ -11,7 +11,7 @@ import json
 import threading
 from typing import Generic, TypeVar
 
-from rescs.domain import AuditData, FileObjectData, Page, RecordData, ensure_utc, utcnow
+from rescs.domain import AuditData, FileObjectData, Page, RecordData, UploadSessionData, ensure_utc, utcnow
 from rescs.errors import ConflictError, NotFoundError
 
 T = TypeVar("T", RecordData, FileObjectData)
@@ -446,3 +446,45 @@ class InMemoryAuditRepository:
             for event_id in stale:
                 del self._events[event_id]
             return len(stale)
+
+
+class InMemoryUploadSessionRepository:
+    def __init__(self) -> None:
+        self._sessions: dict[str, UploadSessionData] = {}
+        self._lock = threading.RLock()
+
+    def create(self, session: UploadSessionData) -> UploadSessionData:
+        with self._lock:
+            if session.id in self._sessions:
+                raise ConflictError("upload session exists", details={"id": session.id})
+            self._sessions[session.id] = session
+            return session
+
+    def get(self, session_id: str) -> UploadSessionData:
+        with self._lock:
+            try:
+                return self._sessions[session_id]
+            except KeyError:
+                raise NotFoundError("upload session not found", details={"id": session_id}) from None
+
+    def update(self, session: UploadSessionData) -> UploadSessionData:
+        with self._lock:
+            if session.id not in self._sessions:
+                raise NotFoundError("upload session not found", details={"id": session.id}) from None
+            self._sessions[session.id] = session
+            return session
+
+    def delete(self, session_id: str) -> None:
+        with self._lock:
+            if session_id not in self._sessions:
+                raise NotFoundError("upload session not found", details={"id": session_id}) from None
+            del self._sessions[session_id]
+
+    def list_expired(self, before, limit: int = 100) -> list[UploadSessionData]:
+        moment = ensure_utc(before)
+        with self._lock:
+            items = [
+                s for s in self._sessions.values() if ensure_utc(s.expires_at) <= moment and s.status == "active"
+            ]
+            items.sort(key=lambda s: (ensure_utc(s.expires_at), s.id))
+            return items[:limit]

@@ -13,9 +13,10 @@ from datetime import datetime
 from sqlalchemy import String, and_, cast, func, or_
 
 from rescs.db.session import SessionFactory, session_scope
-from rescs.domain import AuditData, FileObjectData, Page, RecordData, ensure_utc, utcnow
+from rescs.domain import AuditData, FileObjectData, Page, RecordData, UploadSessionData, ensure_utc, utcnow
 from rescs.errors import ConflictError, NotFoundError
 from rescs.models import AuditEvent, FileObject, Record
+from rescs.models.upload_session import UploadSession
 
 
 def _tag_pattern(column, tag: str):
@@ -537,3 +538,50 @@ class SQLAlchemyAuditRepository:
                 .delete(synchronize_session=False)
             )
             return int(deleted or 0)
+
+
+class SQLAlchemyUploadSessionRepository:
+    def __init__(self, session_factory: SessionFactory) -> None:
+        self._session_factory = session_factory
+
+    def create(self, session_data: UploadSessionData) -> UploadSessionData:
+        with session_scope(self._session_factory, "create upload session") as session:
+            if session.get(UploadSession, session_data.id) is not None:
+                raise ConflictError("upload session exists", details={"id": session_data.id})
+            session.add(UploadSession.from_domain(session_data))
+        return session_data
+
+    def get(self, session_id: str) -> UploadSessionData:
+        with session_scope(self._session_factory, "get upload session") as session:
+            row = session.get(UploadSession, session_id)
+            if row is None:
+                raise NotFoundError("upload session not found", details={"id": session_id})
+            return row.to_domain()
+
+    def update(self, session_data: UploadSessionData) -> UploadSessionData:
+        with session_scope(self._session_factory, "update upload session") as session:
+            row = session.get(UploadSession, session_data.id)
+            if row is None:
+                raise NotFoundError("upload session not found", details={"id": session_data.id})
+            updated = UploadSession.from_domain(session_data)
+            session.merge(updated)
+        return session_data
+
+    def delete(self, session_id: str) -> None:
+        with session_scope(self._session_factory, "delete upload session") as session:
+            row = session.get(UploadSession, session_id)
+            if row is None:
+                raise NotFoundError("upload session not found", details={"id": session_id})
+            session.delete(row)
+
+    def list_expired(self, before: datetime, limit: int = 100) -> list[UploadSessionData]:
+        with session_scope(self._session_factory, "list expired uploads") as session:
+            rows = (
+                session.query(UploadSession)
+                .filter(UploadSession.expires_at <= ensure_utc(before))
+                .filter(UploadSession.status == "active")
+                .order_by(UploadSession.expires_at.asc(), UploadSession.id.asc())
+                .limit(limit)
+                .all()
+            )
+            return [row.to_domain() for row in rows]
