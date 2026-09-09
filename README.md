@@ -31,7 +31,8 @@ independently and connected through a stable contract (see
 
 ## Status
 
-v0.1.0 — project foundation.
+v0.1.0 — Phases 1–10 complete (foundation through observability/health).
+See `docs/architecture.md` and `CHANGELOG.md`.
 
 ## Stack
 
@@ -48,6 +49,7 @@ src/rescs/
 ├── main.py            # application factory + entry point
 ├── config.py          # environment / .env configuration
 ├── logging.py         # logging foundation
+├── observability.py   # request-ID middleware + access logging
 ├── errors.py          # domain error hierarchy
 └── health.py          # health/readiness reporting foundation
 ```
@@ -75,6 +77,7 @@ committed.
 | `RESCS_DATABASE_URL` | No | `sqlite:///rescs_dev.db` | SQLAlchemy URL; use `postgresql+psycopg://` for PostgreSQL/Supabase |
 | `RESCS_STORAGE_DIR` | No | `rescs_storage` | Local object-store directory |
 | `RESCS_LOG_LEVEL` | No | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `RESCS_REQUEST_ID_HEADER` | No | `X-Request-ID` | Request correlation header echoed on every response |
 
 ## Running
 

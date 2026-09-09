@@ -119,3 +119,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Reserved namespace prefixes `core.*` and `rescs.*`
 - Docs: `docs/core-integration-contract.md` (transport, envelope,
   guarantees, C.O.R.E. conventions, database boundary)
+
+### Added - Phase 10 (observability and health)
+
+- Request-ID middleware (`rescs.observability`): honours caller-supplied
+  `X-Request-ID` (≤128 chars) else generates, echoes on every response
+  including errors, propagates via context/scope, access-logged
+- Readiness semantics: `/health/ready` and `/health` return `200` when
+  healthy and `503` with the same `{status, checks}` body when any
+  database/storage check is `down`/`degraded`
+- Stable error envelopes for unknown routes (`404 NOT_FOUND`) and unhandled
+  failures (`500 INTERNAL_ERROR`) with request-ID propagation and no
+  traceback/credential leakage
+- Test suite: readiness failure matrix (db/storage/both/exception/degraded),
+  secret-leakage, public-health policy, request-ID on success and failure
+- Docs: `docs/observability.md`, health semantics in `docs/api.md`,
+  architecture roadmap Phase 10 complete

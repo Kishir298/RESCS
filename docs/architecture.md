@@ -94,7 +94,7 @@ src/rescs/
 | 7 | Security and access control | Complete |
 | 8 | Synchronization and consistency | Complete |
 | 9 | C.O.R.E. integration contract | Complete |
-| 10 | Observability and health | Pending |
+| 10 | Observability and health | Complete |
 | 11 | Testing and integration | Pending |
 | 12 | R.I.S.A.R.M.S. readiness | Pending |
 | 13 | Cleanup, documentation, release | Pending |

@@ -39,6 +39,7 @@ and `/redoc`. Versioned under `/api/v1`.
 | 403 | `FORBIDDEN` | authenticated but not allowed |
 | 404 | `NOT_FOUND` | unknown resource |
 | 409 | `CONFLICT` | violates uniqueness |
+| 412 | `PRECONDITION_FAILED` | stale `If-Match` etag; re-read and retry |
 | 422 | `VALIDATION_ERROR` | body fails validation |
 | 500 | `STORAGE_ERROR` / `INTERNAL_ERROR` | storage/backend failure |
 | 503 | `DEPENDENCY_UNAVAILABLE` | database/object store unreachable |
@@ -142,10 +143,22 @@ GET /api/v1/files?owner=&limit=&offset=
 ## Health
 
 ```
-GET /health/live    -> process liveness
+GET /health/live    -> process liveness (always 200 when the process runs)
 GET /health/ready   -> dependency readiness (database, storage)
-GET /health         -> full status
+GET /health         -> full status (service + version + checks)
 ```
+
+- **Liveness** (`/health/live`) reports `{"status":"alive",...}` and never
+  probes dependencies. It is public (no `X-API-Key`).
+- **Readiness** (`/health/ready`) reports
+  `{"status":"ready"|"not_ready","checks":{"database":"ok"|"down","storage":"ok"|"down"}}`.
+  Healthy dependencies yield `200 ready`; any `down`/`degraded` dependency
+  yields **`503 not_ready`** with the same body shape. Checks never expose
+  connection strings, credentials, SQL or tracebacks.
+- **Summary** (`/health`) returns `{service, version, status, checks}` with
+  `200` when healthy and `503` when any dependency is down/degraded.
+- Every health response (success and `503`) echoes `X-Request-ID` (see
+  Request correlation above and `docs/observability.md`).
 
 ## Record / File document shapes
 
