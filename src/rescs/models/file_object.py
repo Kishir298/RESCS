@@ -33,6 +33,14 @@ class FileObject(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
     )
+    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    deleted_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     def to_domain(self) -> FileObjectData:
         return FileObjectData(
@@ -49,6 +57,10 @@ class FileObject(Base):
             etag=self.etag,
             created_at=ensure_utc(self.created_at),
             updated_at=ensure_utc(self.updated_at),
+            tags=list(self.tags or []),
+            expires_at=ensure_utc(self.expires_at),
+            deleted_at=ensure_utc(self.deleted_at),
+            deleted_by=self.deleted_by,
         )
 
     @classmethod
@@ -67,4 +79,8 @@ class FileObject(Base):
             etag=data.etag,
             created_at=ensure_utc(data.created_at),
             updated_at=ensure_utc(data.updated_at),
+            tags=list(data.tags or []),
+            expires_at=ensure_utc(data.expires_at),
+            deleted_at=ensure_utc(data.deleted_at),
+            deleted_by=data.deleted_by,
         )

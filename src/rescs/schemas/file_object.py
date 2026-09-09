@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rescs.domain import FileObjectData
+from rescs.schemas.record import _validate_tag_list
 
 DEFAULT_MIME_TYPE = "application/octet-stream"
 
@@ -36,6 +38,13 @@ class FileObjectCreate(_FileJsonMixin):
     metadata: dict[str, Any] = Field(default_factory=dict)
     owner: str = Field(default="system", min_length=1, max_length=256)
     idempotency_key: str | None = Field(default=None, max_length=128)
+    tags: list[str] = Field(default_factory=list)
+    expires_at: datetime | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def _validate_tags(cls, tags: list[str]) -> list[str]:
+        return _validate_tag_list(tags)
 
 
 class FileObjectRead(BaseModel):
@@ -54,6 +63,10 @@ class FileObjectRead(BaseModel):
     etag: str
     created_at: Any
     updated_at: Any
+    tags: list[str] = Field(default_factory=list)
+    expires_at: Any = None
+    deleted_at: Any = None
+    deleted_by: str | None = None
 
     @classmethod
     def from_domain(cls, data: FileObjectData) -> FileObjectRead:

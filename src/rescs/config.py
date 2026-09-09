@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     auto_create_schema: bool = True
     request_id_header: str = "X-Request-ID"
 
+    # v0.2 resource governance. Zero means "unlimited".
+    max_records_per_owner: int = 0
+    max_files_per_owner: int = 0
+    max_bytes_per_owner: int = 0
+    max_file_size: int = 0
+    max_metadata_bytes: int = 65536
+    max_bulk_batch: int = 100
+    audit_retention_days: int = 90
+
     @field_validator("api_key")
     @classmethod
     def _validate_api_key(cls, value: str) -> str:
@@ -56,6 +65,27 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"unknown RESCS_ENV {value!r}; expected development, test or production"
             )
+        return value
+
+    @field_validator(
+        "max_records_per_owner",
+        "max_files_per_owner",
+        "max_bytes_per_owner",
+        "max_file_size",
+        "max_metadata_bytes",
+        "audit_retention_days",
+    )
+    @classmethod
+    def _validate_non_negative(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("governance limits must be >= 0 (0 means unlimited)")
+        return value
+
+    @field_validator("max_bulk_batch")
+    @classmethod
+    def _validate_bulk_batch(cls, value: int) -> int:
+        if not 1 <= value <= 1000:
+            raise ValueError("RESCS_MAX_BULK_BATCH must be between 1 and 1000")
         return value
 
 

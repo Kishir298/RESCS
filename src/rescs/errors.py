@@ -75,6 +75,16 @@ class StorageError(RESCSError):
     status_code = 500
 
 
+class PayloadTooLargeError(RESCSError):
+    code = "PAYLOAD_TOO_LARGE"
+    status_code = 413
+
+
+class QuotaExceededError(RESCSError):
+    code = "QUOTA_EXCEEDED"
+    status_code = 403
+
+
 class DependencyUnavailableError(RESCSError):
     code = "DEPENDENCY_UNAVAILABLE"
     status_code = 503

@@ -13,10 +13,16 @@ def _json_default(value: object) -> str:
     raise TypeError(f"object of type {type(value).__name__} is not JSON serializable")
 
 
-def content_etag(value: dict, metadata: dict) -> str:
-    """Stable hash of a record's JSON payload (canonical serialization)."""
+def content_etag(
+    value: dict, metadata: dict, tags: list[str] | tuple[str, ...] = ()
+) -> str:
+    """Stable hash of a record's JSON payload (canonical serialization).
+
+    Tags are sorted before hashing so tag order never changes identity.
+    Records without tags hash exactly as in v0.1 (empty tag list).
+    """
     canonical = json.dumps(
-        [value, metadata],
+        [value, metadata, sorted(tags)],
         sort_keys=True,
         separators=(",", ":"),
         default=_json_default,
