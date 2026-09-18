@@ -179,7 +179,7 @@ Time-window (`created_after/before`, `updated_after/before`) and
 ## Administration
 
 ```
-POST /api/v1/admin/cleanup            -> 200 {dry_run, records_purged, files_purged, audit_pruned}
+POST /api/v1/admin/cleanup            -> 200 {dry_run, records_purged, files_purged, uploads_cleaned, audit_pruned}
 GET  /api/v1/admin/audit?...          -> 200 AuditPage
 GET  /api/v1/admin/records/deleted... -> 200 RecordPage
 GET  /api/v1/admin/files/deleted...   -> 200 FileObjectPage
@@ -188,6 +188,24 @@ GET  /api/v1/admin/files/deleted...   -> 200 FileObjectPage
 Cleanup accepts `{"dry_run": bool, "batch": 1..5000}` and purges expired
 records/files plus audit events older than `RESCS_AUDIT_RETENTION_DAYS`.
 See `docs/lifecycle.md`.
+
+## Uploads (resumable)
+
+```
+POST /api/v1/uploads -> create session {owner, filename, size?, tags?, expires_at?, ttl_seconds?}
+PUT  /api/v1/uploads/{id}/chunk -> append chunk (offset-checked)
+GET  /api/v1/uploads/{id} -> session status
+POST /api/v1/uploads/{id}/finalize -> 201 File (SHA-256 verified)
+```
+See `docs/uploads.md`.
+
+## Contract
+
+```
+GET /api/v1/contract -> machine-readable CORE contract (requires X-API-Key)
+```
+
+Errors include `429 RATE_LIMITED` when the in-memory limiter is enabled (see `docs/rate-limiting.md`; also listed in contract).
 
 ## Health
 
@@ -215,12 +233,12 @@ GET /health         -> full status (service + version + checks)
 Record {
   id, namespace, key, value, metadata, owner,
   version, idempotency_key, etag, created_at, updated_at,
-  tags, expires_at, deleted_at, deleted_by
+  tags, expires_at, ttl_seconds, deleted_at, deleted_by
 }
 File {
   id, filename, mime_type, size, storage_path, sha256, metadata, owner,
   version, idempotency_key, etag, created_at, updated_at,
-  tags, expires_at, deleted_at, deleted_by
+  tags, expires_at, ttl_seconds, deleted_at, deleted_by
 }
 Audit {
   id, timestamp, operation, resource_type, resource_id, owner,

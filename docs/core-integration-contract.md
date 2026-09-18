@@ -49,6 +49,7 @@ on `code`, never on the HTTP status alone.
 | 404 | `NOT_FOUND` | treat storage state as absent (incl. deleted/expired) |
 | 409 | `CONFLICT` | duplicate within namespace; re-check |
 | 412 | `PRECONDITION_FAILED` | re-read, then retry with new etag |
+| 429 | `RATE_LIMITED` | back off; retry after window (only when limiter enabled) |
 | 413 | `PAYLOAD_TOO_LARGE` | shrink file/metadata; check configured caps |
 | 422 | `VALIDATION_ERROR` | fix body |
 | 500 | `STORAGE_ERROR` | backend fault; retry after backoff |

@@ -63,9 +63,10 @@ src/rescs/
 ├── etag.py            # deterministic content identifiers
 ├── security.py        # X-API-Key auth + owner scoping
 ├── observability.py   # request-ID middleware + access logging
+├── rate_limit.py      # in-memory rate limiting (429 RATE_LIMITED)
 ├── contract.py        # machine-readable CORE contract
 ├── db/                # engine, sessions, schema manager, bootstrap
-├── models/            # SQLAlchemy ORM models (records, file_objects)
+├── models/            # SQLAlchemy ORM models (records, file_objects, upload_sessions, audit)
 ├── schemas/           # Pydantic request/response schemas + validation
 ├── interfaces/        # repository + object-store protocols
 ├── repositories/      # in-memory + SQLAlchemy implementations

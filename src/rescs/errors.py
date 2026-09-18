@@ -66,7 +66,7 @@ class PreconditionFailedError(RESCSError):
 
 
 class UnprocessableContentError(RESCSError):
-    code = "UNPROCESSABLE_CONTENT"
+    code = "UNPROCESSABLE_CONTENT  # legacy alias of VALIDATION_ERROR (422); prefer VALIDATION_ERROR"
     status_code = 422
 
 

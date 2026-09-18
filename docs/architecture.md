@@ -61,6 +61,8 @@ No API route contains direct database logic.
 
 ## Project structure
 
+> v0.3.0 note: also ships `rate_limit.py`, `contract.py`, `security.py`, `observability.py`; `services/uploads.py`; `models/upload_session.py` + `models/audit.py`; `api/uploads.py`, `api/contract.py`, `api/admin.py`; storage `s3.py` (+ fake).
+
 ```
 src/rescs/
 ├── main.py            # application factory, lifespan wiring

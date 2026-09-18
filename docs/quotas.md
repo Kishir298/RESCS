@@ -2,7 +2,7 @@
 
 ## Tags & metadata (Phase 18)
 
-Records and files carry `tags: list[str]` (≤32 tags, 1–64 chars each,
+Records and files carry `tags: list[str]` (up to 50 tags/resource, 1–64 chars each,
 `[A-Za-z0-9._-]`; violations are `422`). Tags are part of the record ETag
 (sorted before hashing, so order never affects identity); records without
 tags hash exactly as in v0.1. Serialized metadata is capped by

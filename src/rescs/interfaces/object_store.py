@@ -10,8 +10,7 @@ CHUNK_SIZE = 1024 * 1024  # 1 MiB streaming chunks
 
 @runtime_checkable
 class ObjectStore(Protocol):
-    """Binary object storage. Backends: local filesystem (now), cloud object
-    storage (future: S3-compatible, Supabase Storage, ...).
+    """Binary object storage. Backends: local filesystem / memory (default) + S3-compatible (implemented, + fake for tests).
 
     Small payloads may use :meth:`put`/:meth:`get`. Large payloads MUST use
     :meth:`put_stream`/:meth:`get_stream` to keep memory bounded.

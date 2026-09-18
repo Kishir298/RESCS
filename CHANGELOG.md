@@ -100,7 +100,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - READY FOR VALIDATION: live PostgreSQL migration run, S3, deployment,
   multi-machine, 24/7 endurance
 
-## Unreleased
+## [0.1.0] (Phases 1-13)
 
 ### Added - Phase 1 (foundation)
 

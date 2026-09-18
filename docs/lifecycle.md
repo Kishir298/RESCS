@@ -39,8 +39,7 @@ Rules:
 
 ## TTL & expiration (Phase 15)
 
-Records and files accept an optional UTC `expires_at` (ISO-8601; naive input
-is assumed UTC; past values are `400 INVALID_REQUEST`):
+Records/files/uploads accept optional UTC `expires_at` (ISO-8601; naive assumed UTC; past values `400`) and/or `ttl_seconds` (0..RESCS_MAX_TTL_SECONDS; mutually exclusive with `expires_at` — supplying both is `400`):
 
 - expired resources behave as absent for ordinary operations (`404`/excluded
   from lists), but remain visible with `include_expired=true`;
@@ -55,7 +54,7 @@ read/write time; physical removal happens through explicit cleanup:
 ```
 POST /api/v1/admin/cleanup
 {"dry_run": false, "batch": 500}
--> {"dry_run": false, "records_purged": N, "files_purged": M, "audit_pruned": K}
+-> {"dry_run": false, "records_purged": N, "files_purged": M, "uploads_cleaned": U, "audit_pruned": K}
 ```
 
 `dry_run: true` reports counts without changing anything. File cleanup

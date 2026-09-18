@@ -55,7 +55,7 @@ Raw database exceptions never reach API consumers.
 
 `SchemaManager.migrate()` is idempotent: it derives DDL from the ORM models,
 creates the `schema_info` table, and stamps the expected schema version
-(current: `0.2.0`).
+(current: `0.3.0`).
 Production schemas managed by a dedicated migration tool (such as Alembic)
 should run with `RESCS_AUTO_CREATE_SCHEMA=false`.
 
@@ -74,9 +74,13 @@ reserving keys:
   uq_records_namespace_key`, `CREATE UNIQUE INDEX IF NOT EXISTS ...
   WHERE deleted_at IS NULL` (validated by inspection; live run deferred).
 
+### v0.2 → v0.3 upgrade
+
+v0.3 adds `upload_sessions` table (resumable uploads) + indexes `ix_records_owner_updated/expires`, `ix_file_objects_owner_updated/size`, `ix_upload_sessions_status_expires` (see models/record.py, file_object.py, upload_session.py; CHANGELOG).
+
 ## Tables
 
-- `records`, `file_objects`: storage rows plus lifecycle columns above;
+- `records`, `file_objects`, `upload_sessions`: storage rows plus lifecycle columns above (v0.3 adds upload_sessions + owner/updated/expires indexes);
   indexes on `namespace`, `expires_at`, `deleted_at`.
 - `audit_events`: append-only operation log (see `docs/lifecycle.md`).
 - `schema_info`: single-row version stamp.

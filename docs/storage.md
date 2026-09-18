@@ -15,7 +15,7 @@ FileService
     +-- metadata  ->  FileObjectRepository (PostgreSQL / SQLite host)
     |
     +-- blob      ->  ObjectStore  (local filesystem now,
-                                    S3-compatible / Supabase Storage later)
+                                    S3-compatible backend implemented (+ fake for tests))
 ```
 
 ## Object store abstraction

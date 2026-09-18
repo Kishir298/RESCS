@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # Payloads at/above this size stream instead of buffering fully in memory.
     streaming_threshold_bytes: int = 8388608
 
-    # Object-store backend selection: local (default) or s3.
+    # Object-store backend selection: local (default), memory or s3.
     storage_backend: str = "local"
     s3_endpoint: str = ""
     s3_bucket: str = ""
