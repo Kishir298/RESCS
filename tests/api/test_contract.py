@@ -23,7 +23,13 @@ def test_contract_describes_capabilities(client: TestClient):
         "limit_max": 500,
         "limit_default": 100,
     }
-    assert contract["reserved_namespaces"] == ["core.", "rescs."]
+    assert contract["reserved_namespaces"] == [
+        "core.",
+        "rescs.",
+        "asis.",
+        "tiviss.",
+        "personal.",
+    ]
     assert contract["endpoints"]["records"] == "/api/v1/records"
     assert contract["owner"]["default"] == "system"
     assert contract["owner"]["locked"] is False

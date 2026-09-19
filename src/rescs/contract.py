@@ -13,7 +13,15 @@ from typing import Any
 from rescs.api import API_VERSION
 from rescs.config import Settings
 
-RESERVED_NAMESPACE_PREFIXES = ("core.", "rescs.")
+RESERVED_NAMESPACE_PREFIXES = ("core.", "rescs.", "asis.", "tiviss.", "personal.")
+
+# Logical ownership domains built on the namespace convention. Reservation
+# is advisory (no server-side enforcement, matching the existing
+# convention): agents enforce their own prefix client-side.
+#   asis.*     -> data owned by A.S.I.S.
+#   tiviss.*   -> data owned by T.I.V.I.S.S.
+#   personal.* -> general user-owned cloud data (not agent state)
+STORAGE_DOMAINS = ("asis.", "tiviss.", "personal.")
 
 CAPABILITIES: dict[str, list[str]] = {
     "records": ["create", "put", "get", "update", "delete", "restore", "purge", "bulk", "list", "search"],
