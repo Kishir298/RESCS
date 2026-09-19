@@ -232,8 +232,11 @@ class UploadService:
     def finalize(self, session_id: str, *, actor: str = "system") -> FileObjectData:
         lock = self._finalize_lock(session_id)
         # Single-instance single-winner: concurrent finalizes serialize here.
-        # Multi-process deployments rely on the status CAS below (second
-        # writer sees non-active and gets 409, never a duplicate file).
+        # NOTE (scope): the status transition below is read-modify-write, not
+        # a DB-level conditional update, so the single-winner guarantee holds
+        # for one process only. Multi-process deployments need a conditional
+        # status update (e.g. UPDATE ... WHERE status='active') before relying
+        # on concurrent-finalize safety across processes.
         with lock:
             file_id: str | None = None
             try:

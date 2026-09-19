@@ -118,3 +118,18 @@ def test_list_empty(service):
     page = service.list()
     assert page.total == 0
     assert page.items == []
+
+def test_download_stream_verifies_integrity(service):
+    created = service.create(make_payload(filename='s.bin'), b'stream-bytes')
+    meta, stream = service.download_stream(created.id)
+    assert meta.id == created.id
+    assert b''.join(stream) == b'stream-bytes'
+
+
+def test_download_stream_tampered_blob_raises(service):
+    created = service.create(make_payload(filename='t.bin'), b'good-bytes')
+    # Tamper the blob behind the metadata: stream must abort, not 200 bad bytes.
+    service._store.put(created.storage_path, b'evil-bytes!')
+    meta, stream = service.download_stream(created.id)
+    with pytest.raises(StorageError, match='integrity'):
+        b''.join(stream)

@@ -58,10 +58,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             window = deque()
             self._hits[key] = window
         else:
-            # LRU refresh + bound: evict oldest keys beyond cap.
+            # LRU refresh.
             self._hits.move_to_end(key)
-            while len(self._hits) > MAX_TRACKED_KEYS:
-                self._hits.popitem(last=False)
+        # Bound the map on every path (including brand-new keys) so a
+        # flood of distinct keys cannot grow it without limit.
+        while len(self._hits) > MAX_TRACKED_KEYS:
+            self._hits.popitem(last=False)
         while window and window[0] <= now - 60:
             window.popleft()
         if len(window) >= limit:

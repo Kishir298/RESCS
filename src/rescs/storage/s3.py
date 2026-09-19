@@ -143,10 +143,19 @@ def build_object_store(settings) -> object:
     if backend == "memory":
         return MemoryObjectStore()
     if backend == "s3":
-        # In tests / dev without boto3, fall back to fake when explicitly flagged.
+        # Explicit fake only when flagged. A missing bucket with backend=s3
+        # is a prod misconfiguration: fail fast instead of silently
+        # returning an in-memory fake (which would look like data loss).
         endpoint = settings.s3_endpoint or ""
-        if endpoint.startswith("fake:") or not settings.s3_bucket:
+        if endpoint.startswith("fake:"):
             return FakeS3ObjectStore(bucket=settings.s3_bucket or "fake-bucket", prefix=settings.s3_path_prefix)
+        if not settings.s3_bucket:
+            from rescs.errors import ConfigurationError
+
+            raise ConfigurationError(
+                "storage_backend=s3 requires RESCS_S3_BUCKET; refusing to "
+                "start with an in-memory fake."
+            )
         return S3ObjectStore(
             endpoint=settings.s3_endpoint,
             bucket=settings.s3_bucket,

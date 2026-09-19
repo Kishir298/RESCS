@@ -95,3 +95,12 @@ def test_list_filters_and_pagination(sqlalchemy_record_repo):
     prefixed = sqlalchemy_record_repo.list(namespace=ns, key_prefix="event-0")
     assert prefixed.total == 1
     assert prefixed.items[0].key == "event-0"
+
+
+def test_search_treats_percent_underscore_as_literals(sqlalchemy_record_repo):
+    sqlalchemy_record_repo.create(make_record(key="100%-off_sale"))
+    sqlalchemy_record_repo.create(make_record(key="100X-offYsale"))
+    page = sqlalchemy_record_repo.search("100%-off_sale")
+    keys = {item.key for item in page.items}
+    assert "100%-off_sale" in keys
+    assert "100X-offYsale" not in keys

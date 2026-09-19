@@ -354,13 +354,37 @@ class FileService:
     ) -> tuple[FileObjectData, Iterator[bytes]]:
         """Return metadata plus a bounded-memory byte iterator.
 
-        Integrity is verified on first full read by the caller via the
-        stored SHA-256; the API layer streams directly from the store.
+        The iterator verifies incremental SHA-256 as it yields: a corrupt
+        blob aborts the stream with StorageError instead of returning 200
+        with bad bytes. Callers serving HTTP should also expose the
+        expected digest (X-File-SHA256) so clients can verify independently.
         """
         file_object = self._repo.get(file_id)
-        stream = self._store.get_stream(file_object.storage_path, chunk_size)
+        expected = file_object.sha256
+        inner = self._store.get_stream(file_object.storage_path, chunk_size)
+
+        def _verifying() -> Iterator[bytes]:
+            digest = hashlib.sha256()
+            try:
+                for chunk in inner:
+                    digest.update(chunk)
+                    yield chunk
+            finally:
+                try:
+                    close = getattr(inner, "close", None)
+                    if callable(close):
+                        close()
+                except Exception:
+                    pass
+            if digest.hexdigest() != expected:
+                raise StorageError(
+                    "blob integrity check failed during stream; stored bytes "
+                    "do not match metadata",
+                    details={"id": file_id, "expected_sha256": expected},
+                )
+
         self._audited("file.download", file_object)
-        return file_object, stream
+        return file_object, _verifying()
 
     def delete(
         self,

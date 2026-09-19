@@ -19,4 +19,4 @@
 
 - Owner-isolated (service-level lock check + router check); expired sessions read as `404` and are reclaimed by `POST /api/v1/admin/cleanup` (`uploads_cleaned`).
 - Quotas (`max_file_size/metadata/files/bytes`) enforced at finalize with post-write rollback; failed finalization leaves no file and resets session to `active` for retry/cancel.
-- Concurrent finalize is safe: first wins, second sees closed session (`409`). Single-instance lock + status CAS; multi-process uses CAS (documented).
+- Concurrent finalize is safe within one process: first wins, second sees closed session (`409`). Single-instance lock + status transition; cross-process single-winner requires a DB-level conditional status update (not yet implemented).

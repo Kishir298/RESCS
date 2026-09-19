@@ -26,10 +26,15 @@ def _tag_pattern(column, tag: str):
     the double-quoted element is exact. ``_``/``%``/``\\`` are escaped because
     ``_`` is a legal tag character and a LIKE wildcard.
     """
-    escaped = (
-        tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    )
+    escaped = _like_escape(tag)
     return cast(column, String).like(f'%"{escaped}"%', escape="\\")
+
+
+def _like_escape(raw: str) -> str:
+    """Escape LIKE wildcards in free-text user input."""
+    return (
+        raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
 
 
 def _live_record_filter(now: datetime):
@@ -242,7 +247,7 @@ class SQLAlchemyRecordRepository:
         include_deleted: bool = False,
         include_expired: bool = False,
     ) -> Page[RecordData]:
-        pattern = f"%{query}%"
+        pattern = f"%{_like_escape(query)}%"
         now = utcnow()
         with session_scope(self._session_factory, "search records") as session:
             base = session.query(Record)
@@ -259,9 +264,9 @@ class SQLAlchemyRecordRepository:
                     or_(Record.expires_at.is_(None), Record.expires_at > now)
                 )
             condition = or_(
-                Record.key.ilike(pattern),
-                cast(Record.meta, String).ilike(pattern),
-                cast(Record.value, String).ilike(pattern),
+                Record.key.ilike(pattern, escape="\\"),
+                cast(Record.meta, String).ilike(pattern, escape="\\"),
+                cast(Record.value, String).ilike(pattern, escape="\\"),
             )
             matching = base.filter(condition)
             total = matching.count()

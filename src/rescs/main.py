@@ -71,13 +71,17 @@ def create_app(
     app.state.settings = settings
     app.state.health = HealthService()
 
+    # NOTE: Starlette runs middleware in reverse order of registration,
+    # so RateLimit is registered first (inner) and Observability second
+    # (outer). Every response — including 429s short-circuited by the
+    # limiter — therefore carries X-Request-ID correlation.
+    from rescs.rate_limit import RateLimitMiddleware
+
+    app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(
         ObservabilityMiddleware,
         settings=settings,
     )
-    from rescs.rate_limit import RateLimitMiddleware
-
-    app.add_middleware(RateLimitMiddleware, settings=settings)
 
     register_exception_handlers(app)
 

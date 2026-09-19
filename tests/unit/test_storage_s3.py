@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from rescs.storage.s3 import FakeS3ObjectStore, build_object_store
 from rescs.config import Settings
+from rescs.errors import ConfigurationError
 
 
 def test_fake_s3_roundtrip():
@@ -22,5 +25,17 @@ def test_fake_s3_roundtrip():
 def test_build_object_store_memory_and_fake():
     s = Settings(api_key="test-key-12345678", storage_backend="memory", _env_file=None)
     assert build_object_store(s).__class__.__name__ == "MemoryObjectStore"
-    s2 = Settings(api_key="test-key-12345678", storage_backend="s3", s3_bucket="", _env_file=None)
+    s2 = Settings(
+        api_key="test-key-12345678",
+        storage_backend="s3",
+        s3_endpoint="fake:local",
+        s3_bucket="",
+        _env_file=None,
+    )
     assert isinstance(build_object_store(s2), FakeS3ObjectStore)
+
+
+def test_build_object_store_s3_missing_bucket_fails_fast():
+    s = Settings(api_key="test-key-12345678", storage_backend="s3", s3_bucket="", _env_file=None)
+    with pytest.raises(ConfigurationError, match="RESCS_S3_BUCKET"):
+        build_object_store(s)

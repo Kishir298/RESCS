@@ -43,3 +43,32 @@ def test_rate_limit_health_exempt():
         # Health never limited.
         assert client.get("/health/live").status_code == 200
         assert client.get("/health/ready").status_code in (200, 503)
+
+
+def test_rate_limit_429_carries_request_id():
+    with _limited_client(rate_limit_general_per_minute=1) as client:
+        client.get("/api/v1/records")
+        r = client.get("/api/v1/records")
+        assert r.status_code == 429
+        assert r.headers.get("X-Request-ID")
+
+
+def test_rate_limit_map_bounded_on_new_keys():
+    from rescs.rate_limit import MAX_TRACKED_KEYS, RateLimitMiddleware
+
+    with _limited_client(
+        rate_limit_general_per_minute=10**9,
+        rate_limit_writes_per_minute=10**9,
+        rate_limit_uploads_per_minute=10**9,
+    ) as client:
+        # One request first: Starlette builds middleware_stack lazily.
+        client.get("/api/v1/records")
+        # Reach the middleware through the app stack.
+        node = client.app.middleware_stack
+        while node is not None and not isinstance(node, RateLimitMiddleware):
+            node = getattr(node, "app", None)
+        middleware = node
+        assert middleware is not None
+        for i in range(MAX_TRACKED_KEYS + 50):
+            client.get("/api/v1/records", headers={"X-API-Key": f"key-{i:06d}"})
+        assert len(middleware._hits) <= MAX_TRACKED_KEYS
