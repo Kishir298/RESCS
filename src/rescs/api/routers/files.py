@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from rescs.api.deps import get_settings, get_services, parse_etag
 from rescs.config import Settings
 from rescs.domain import normalize_tags
-from rescs.errors import InvalidRequestError
+from rescs.errors import InvalidRequestError, PayloadTooLargeError
 from rescs.schemas.file_object import FileObjectCreate, FileObjectPage, FileObjectRead
 from rescs.security import (
     assert_principal_is_owner,
@@ -51,11 +51,21 @@ async def upload_file(
     # Bounded-memory spool: small payloads stay in RAM, large spill to disk.
     # Never holds more than ~1MiB in RAM at once during intake.
     spool = tempfile.SpooledTemporaryFile(max_size=threshold)
+    # Total-intake bound: reject oversized uploads during spooling so a
+    # huge body cannot fill spool disk before governance sees it.
+    max_intake = settings.max_file_size or 0
+    received = 0
     try:
         while True:
             chunk = await upload.read(CHUNK_SIZE)
             if not chunk:
                 break
+            received += len(chunk)
+            if max_intake and received > max_intake:
+                raise PayloadTooLargeError(
+                    f"file exceeds maximum size of {max_intake} bytes",
+                    details={"size": received, "max": max_intake},
+                )
             spool.write(chunk)
         spool.seek(0)
 
@@ -98,6 +108,32 @@ def _sniff_mime(content_type: str | None) -> str:
     if not content_type:
         return "application/octet-stream"
     return content_type.split(";")[0].strip()
+
+
+def _content_disposition(filename: str | None) -> str:
+    """Build a header-safe attachment disposition for an untrusted filename.
+
+    Strips CR/LF + quotes/backslashes (header injection), falls back to
+    ``download`` when nothing safe remains, and appends an RFC 5987
+    ``filename*`` UTF-8 part so non-ASCII names survive intact.
+    """
+    from urllib.parse import quote
+
+    raw = (filename or "").strip() or "download"
+    safe = "".join(
+        ch for ch in raw if ch not in '\r\n"\\' and ord(ch) >= 0x20
+    ).strip()
+    if not safe:
+        safe = "download"
+    if len(safe) > 180:
+        safe = safe[:180]
+    try:
+        encoded = quote(raw, safe="")
+    except Exception:
+        encoded = quote(safe, safe="")
+    if encoded == safe:
+        return f'attachment; filename="{safe}"'
+    return f'attachment; filename="{safe}"; filename*=UTF-8\'\'{encoded}'
 
 
 @router.get("", response_model=FileObjectPage)
@@ -195,7 +231,7 @@ def download_file(
     )
     threshold = settings.streaming_threshold_bytes or 8 * 1024 * 1024
     headers = {
-        "Content-Disposition": f"attachment; filename=\"{meta.filename}\"",
+        "Content-Disposition": _content_disposition(meta.filename),
         "X-File-SHA256": meta.sha256,
         "X-File-Size": str(meta.size),
         "ETag": f'"{meta.etag}"',
