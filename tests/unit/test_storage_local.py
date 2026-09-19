@@ -72,3 +72,32 @@ def test_persists_across_instances(tmp_path):
     first.put("persist-me", b"bytes")
     second = LocalObjectStore(base)
     assert second.get("persist-me") == b"bytes"
+
+
+def test_put_stream_failure_leaves_no_tmp(tmp_path):
+    base = tmp_path / "store"
+    store = LocalObjectStore(base)
+
+    def _failing():
+        yield b"partial"
+        raise RuntimeError("chunk source exploded")
+
+    with pytest.raises(RuntimeError, match="chunk source exploded"):
+        store.put_stream("obj-1", _failing())
+    leftovers = [p for p in base.iterdir() if p.suffix == ".tmp" or ".tmp" in p.name]
+    assert leftovers == []
+    assert not store.exists("obj-1")
+
+
+def test_get_stream_abandon_releases_file(tmp_path):
+    import os
+
+    base = tmp_path / "store"
+    store = LocalObjectStore(base)
+    store.put("obj-1", b"0123456789")
+    stream = store.get_stream("obj-1", chunk_size=2)
+    assert next(stream) == b"01"
+    stream.close()
+    # On Windows an open handle blocks deletion: this proves the close.
+    os.remove(base / "obj-1")
+    assert not (base / "obj-1").exists()

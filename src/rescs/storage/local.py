@@ -71,35 +71,55 @@ class LocalObjectStore:
 
     def put_stream(self, object_id: str, chunks: Iterable[bytes]) -> None:
         target = self._resolve(object_id)
+        temp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
         try:
-            temp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
             with open(temp, "wb") as handle:
                 for chunk in chunks:
                     if chunk:
                         handle.write(chunk)
             os.replace(temp, target)
         except OSError as exc:
+            temp.unlink(missing_ok=True)
             raise StorageError(
                 "failed to write object stream",
                 details={"object_id": object_id, "cause": str(exc)},
             ) from exc
+        except Exception:
+            # Non-OS failure mid-iteration (e.g. size governance aborts the
+            # chunk source): never leave the temp file behind.
+            temp.unlink(missing_ok=True)
+            raise
 
     def get_stream(
         self, object_id: str, chunk_size: int = CHUNK_SIZE
     ) -> Iterator[bytes]:
         target = self._resolve(object_id)
         try:
-            with open(target, "rb") as handle:
-                while True:
-                    chunk = handle.read(chunk_size)
-                    if not chunk:
-                        break
-                    yield chunk
+            handle = open(target, "rb")
         except OSError as exc:
             raise StorageError(
                 "failed to read object stream",
                 details={"object_id": object_id, "cause": str(exc)},
             ) from exc
+        try:
+            while True:
+                try:
+                    chunk = handle.read(chunk_size)
+                except OSError as exc:
+                    raise StorageError(
+                        "failed to read object stream",
+                        details={"object_id": object_id, "cause": str(exc)},
+                    ) from exc
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            # Explicit close (not just `with`): abandoning the iterator
+            # releases the fd deterministically on every interpreter.
+            try:
+                handle.close()
+            except Exception:
+                pass
 
     def size(self, object_id: str) -> int:
         target = self._resolve(object_id)

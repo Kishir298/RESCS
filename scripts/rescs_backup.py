@@ -60,6 +60,39 @@ def _url_scheme(url: str) -> str:
     return scheme.split("+", 1)[0]
 
 
+def _pg_dump_invocation(db_url: str) -> tuple[list[str], dict[str, str] | None]:
+    """Build a pg_dump argv that never exposes the password.
+
+    The password (if any) travels via the ``PGPASSWORD`` environment
+    variable; argv carries a password-redacted URI with a libpq-native
+    scheme (``postgresql://``). Returns ``(argv_without_output_flag, env)``
+    where ``env`` is None when no password handling was possible (legacy
+    path: full URL on argv, unchanged behavior).
+    """
+    from urllib.parse import unquote, urlsplit, urlunsplit
+
+    try:
+        parts = urlsplit(db_url)
+    except ValueError:
+        return ["pg_dump", db_url, "-Fc"], None
+    if not parts.hostname:
+        return ["pg_dump", db_url, "-Fc"], None
+    netloc = parts.hostname
+    if parts.port:
+        netloc += f":{parts.port}"
+    if parts.username:
+        netloc = f"{parts.username}@{netloc}"
+    clean = urlunsplit(
+        (parts.scheme.split("+")[0], netloc, parts.path or "", parts.query or "", "")
+    )
+    env: dict[str, str] | None = None
+    if parts.password:
+        # urlsplit keeps percent-encoding; PGPASSWORD needs the raw value.
+        env = dict(os.environ)
+        env["PGPASSWORD"] = unquote(parts.password)
+    return ["pg_dump", clean, "-Fc"], env
+
+
 def backup_sqlite(db_path: Path, dest: Path) -> None:
     if dest.exists():
         dest.unlink()
@@ -142,11 +175,12 @@ def main(argv: list[str] | None = None) -> int:
         # Postgres and other backends require an external dump tool; never
         # pretend success without a real dump artifact.
         dumped = out_tmp / "db.dump"
-        pg_url = db_url
+        pg_argv, pg_env = _pg_dump_invocation(db_url)
         try:
             proc = subprocess.run(
-                ["pg_dump", pg_url, "-Fc", "-f", str(dumped)],
+                [*pg_argv, "-f", str(dumped)],
                 capture_output=True, text=True, timeout=600,
+                env=pg_env,
             )
         except FileNotFoundError:
             proc = None

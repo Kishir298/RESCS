@@ -65,3 +65,22 @@ def test_backup_postgres_not_silent_success(tmp_path: Path):
     r = _run(out, "--out", str(out), "--database-url", "postgresql://u:p@localhost/db", "--storage-dir", str(src))
     assert r.returncode == 2
     assert "pg_dump" in r.stderr
+
+
+def test_pg_dump_invocation_hides_password():
+    import sys
+
+    sys.path.insert(0, "scripts")
+    try:
+        from rescs_backup import _pg_dump_invocation
+    finally:
+        sys.path.remove("scripts")
+    argv, env = _pg_dump_invocation("postgresql+psycopg://u:p%40ss@db:5432/app?sslmode=require")
+    assert argv[0] == "pg_dump"
+    assert not any("p@ss" in part for part in argv), argv
+    assert argv[1].startswith("postgresql://u@db:5432/app")
+    assert env is not None and env["PGPASSWORD"] == "p@ss"
+    # No-password URL: no env override needed, still redacted scheme.
+    argv2, env2 = _pg_dump_invocation("postgresql://u@db/app")
+    assert argv2[1] == "postgresql://u@db/app"
+    assert env2 is None
