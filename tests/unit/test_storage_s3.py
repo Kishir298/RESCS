@@ -39,3 +39,13 @@ def test_build_object_store_s3_missing_bucket_fails_fast():
     s = Settings(api_key="test-key-12345678", storage_backend="s3", s3_bucket="", _env_file=None)
     with pytest.raises(ConfigurationError, match="RESCS_S3_BUCKET"):
         build_object_store(s)
+
+
+def test_build_object_store_s3_missing_bucket_message_names_var():
+    from rescs.config import Settings
+    from rescs.errors import ConfigurationError
+
+    s = Settings(api_key="test-key-12345678", storage_backend="s3", s3_bucket="", _env_file=None)
+    with pytest.raises(ConfigurationError) as excinfo:
+        build_object_store(s)
+    assert "RESCS_S3_BUCKET" in str(excinfo.value)

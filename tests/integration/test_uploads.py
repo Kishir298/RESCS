@@ -267,3 +267,29 @@ def test_upload_cleanup_no_orphan_chunks(client: TestClient):
         from pathlib import Path
 
         assert list(Path(store._base).glob(f"{sid2}__chunk__*")) == []
+
+
+def test_concurrent_finalize_single_winner(client: TestClient):
+    import concurrent.futures
+
+    data = b"cas-lock-" * 500
+    total = len(data)
+    created = client.post(
+        UPLOADS,
+        json={"filename": "cas.bin", "content_type": "application/octet-stream", "total_size": total, "chunk_size": 65536},
+    )
+    assert created.status_code == 201, created.text
+    sid = created.json()["id"]
+    offset = 0
+    while offset < total:
+        piece = data[offset : offset + 65536]
+        r = client.put(f"{UPLOADS}/{sid}/chunks?offset={offset}", content=piece, headers={"Content-Type": "application/octet-stream"})
+        assert r.status_code == 200, r.text
+        offset += len(piece)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda _: client.post(f"{UPLOADS}/{sid}/finalize").status_code, range(4)))
+    # Single-process single-winner: exactly one finalize succeeds; losers
+    # fail loudly (404 already-finalized / 409 conflict), never 200 twice.
+    assert results.count(200) == 1
+    assert all(code in (404, 409) for code in results if code != 200)

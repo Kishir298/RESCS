@@ -104,3 +104,10 @@ def test_search_treats_percent_underscore_as_literals(sqlalchemy_record_repo):
     keys = {item.key for item in page.items}
     assert "100%-off_sale" in keys
     assert "100X-offYsale" not in keys
+
+def test_search_wildcard_query_matches_exact_total(sqlalchemy_record_repo):
+    sqlalchemy_record_repo.create(make_record(key="100%-off_sale"))
+    sqlalchemy_record_repo.create(make_record(key="100X-offYsale"))
+    page = sqlalchemy_record_repo.search("100%-off_sale")
+    assert page.total == 1
+    assert [item.key for item in page.items] == ["100%-off_sale"]

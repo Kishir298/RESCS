@@ -133,3 +133,10 @@ def test_download_stream_tampered_blob_raises(service):
     meta, stream = service.download_stream(created.id)
     with pytest.raises(StorageError, match='integrity'):
         b''.join(stream)
+
+
+def test_download_stream_abandon_does_not_raise(service):
+    created = service.create(make_payload(filename='a.bin'), b'abandon-bytes')
+    meta, stream = service.download_stream(created.id)
+    assert next(stream) is not None
+    stream.close()

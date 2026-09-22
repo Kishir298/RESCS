@@ -365,10 +365,12 @@ class FileService:
 
         def _verifying() -> Iterator[bytes]:
             digest = hashlib.sha256()
+            exhausted = False
             try:
                 for chunk in inner:
                     digest.update(chunk)
                     yield chunk
+                exhausted = True
             finally:
                 try:
                     close = getattr(inner, "close", None)
@@ -376,7 +378,10 @@ class FileService:
                         close()
                 except Exception:
                     pass
-            if digest.hexdigest() != expected:
+            # Abandoned (partially-consumed) streams must not raise
+            # integrity errors on GeneratorExit/close; only a fully
+            # consumed stream with a digest mismatch fails.
+            if exhausted and digest.hexdigest() != expected:
                 raise StorageError(
                     "blob integrity check failed during stream; stored bytes "
                     "do not match metadata",
