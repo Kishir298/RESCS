@@ -43,6 +43,7 @@ device.json
 .idea/
 
 # Local data
+*.db
 rescs_dev.db
 rescs_dev.db-*
 rescs_storage/

@@ -11,6 +11,9 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Kishir298" }]
 
+[project.optional-dependencies]
+s3 = ["boto3>=1.28"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
