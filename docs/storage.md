@@ -35,6 +35,7 @@ Implemented backends:
 | --- | --- | --- |
 | `LocalObjectStore` | `rescs/storage/local.py` | local filesystem under `RESCS_STORAGE_DIR` (default) |
 | `MemoryObjectStore` | `rescs/storage/memory.py` | deterministic test double |
+| `S3ObjectStore` / `FakeS3ObjectStore` | `rescs/storage/s3.py` | S3-compatible live backend (`boto3` extra) / in-memory fake for tests |
 
 A cloud object store implements the same protocol; the storage service and
 API are unchanged.
