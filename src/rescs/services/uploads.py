@@ -231,12 +231,8 @@ class UploadService:
 
     def finalize(self, session_id: str, *, actor: str = "system") -> FileObjectData:
         lock = self._finalize_lock(session_id)
-        # Single-instance single-winner: concurrent finalizes serialize here.
-        # NOTE (scope): the status transition below is read-modify-write, not
-        # a DB-level conditional update, so the single-winner guarantee holds
-        # for one process only. Multi-process deployments need a conditional
-        # status update (e.g. UPDATE ... WHERE status='active') before relying
-        # on concurrent-finalize safety across processes.
+        # Single-winner: in-process lock fast-path + DB-level conditional
+        # status update, so concurrent finalizes are safe across processes.
         with lock:
             file_id: str | None = None
             try:
@@ -254,21 +250,24 @@ class UploadService:
                     except NotFoundError:
                         pass
                     raise NotFoundError("upload session expired", details={"id": session_id})
-                # CAS to finalizing so a concurrent finalizer loses.
-                session.status = "finalizing"
-                session.updated_at = utcnow()
+                # Atomic CAS active -> finalizing: only one finalizer wins,
+                # in this process or any other. No blob write before winning.
                 try:
-                    self._sessions.update(session)
+                    won = self._sessions.compare_and_set_status(
+                        session_id, "active", "finalizing"
+                    )
                 except NotFoundError:
                     raise ConflictError("upload session closed concurrently", details={"id": session_id})
-                # Re-read: if another writer already moved past finalizing, lose.
-                current = self._sessions.get(session_id)
-                if current.status != "finalizing":
+                if not won:
+                    try:
+                        current = self._sessions.get(session_id)
+                    except NotFoundError:
+                        raise NotFoundError("upload session expired", details={"id": session_id})
                     raise ConflictError(
                         "upload session already finalized or closed",
                         details={"id": session_id, "status": current.status},
                     )
-                session = current
+                session = self._sessions.get(session_id)
                 # Pre-validate contiguous layout via sizes only (no byte buffering).
                 layout: list[tuple[str, int]] = []
                 offset = 0

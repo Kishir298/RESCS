@@ -474,6 +474,18 @@ class InMemoryUploadSessionRepository:
             self._sessions[session.id] = session
             return session
 
+    def compare_and_set_status(self, session_id: str, expect: str, new: str) -> bool:
+        with self._lock:
+            current = self._sessions.get(session_id)
+            if current is None:
+                raise NotFoundError("upload session not found", details={"id": session_id}) from None
+            if current.status != expect:
+                return False
+            current.status = new
+            current.updated_at = utcnow()
+            self._sessions[session_id] = current
+            return True
+
     def delete(self, session_id: str) -> None:
         with self._lock:
             if session_id not in self._sessions:

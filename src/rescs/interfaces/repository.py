@@ -159,6 +159,14 @@ class UploadSessionRepository(Protocol):
 
     def update(self, session: UploadSessionData) -> UploadSessionData: ...
 
+    def compare_and_set_status(self, session_id: str, expect: str, new: str) -> bool:
+        """Atomically transition status expect -> new.
+
+        Returns True when transitioned, False when present but status
+        differs. Missing id raises NotFoundError (preserves 404 vs 409).
+        """
+        ...
+
     def delete(self, session_id: str) -> None: ...
 
     def list_expired(self, before: datetime, limit: int = 100) -> list[UploadSessionData]: ...

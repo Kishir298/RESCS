@@ -572,6 +572,23 @@ class SQLAlchemyUploadSessionRepository:
             session.merge(updated)
         return session_data
 
+    def compare_and_set_status(self, session_id: str, expect: str, new: str) -> bool:
+        with session_scope(self._session_factory, "cas upload session") as session:
+            matched = (
+                session.query(UploadSession)
+                .filter(UploadSession.id == session_id)
+                .filter(UploadSession.status == expect)
+                .update(
+                    {UploadSession.status: new, UploadSession.updated_at: utcnow()},
+                    synchronize_session=False,
+                )
+            )
+            if matched == 1:
+                return True
+            if session.get(UploadSession, session_id) is None:
+                raise NotFoundError("upload session not found", details={"id": session_id})
+            return False
+
     def delete(self, session_id: str) -> None:
         with session_scope(self._session_factory, "delete upload session") as session:
             row = session.get(UploadSession, session_id)
