@@ -122,11 +122,27 @@ class S3ObjectStore:
             body = obj.get()["Body"]
         except Exception as exc:
             raise StorageError("s3 object not found", details={"object_id": object_id}) from exc
-        while True:
-            chunk = body.read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
+        try:
+            while True:
+                try:
+                    chunk = body.read(chunk_size)
+                except Exception as exc:
+                    raise StorageError(
+                        "failed to read s3 object stream",
+                        details={"object_id": object_id, "cause": str(exc)},
+                    ) from exc
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            try:
+                body.close()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        """No-op for interface parity with local store."""
+        return None
 
     def size(self, object_id: str) -> int:
         try:

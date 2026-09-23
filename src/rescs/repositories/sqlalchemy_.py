@@ -176,7 +176,9 @@ class SQLAlchemyRecordRepository:
             if namespace is not None:
                 query = query.filter(Record.namespace == namespace)
             if key_prefix is not None:
-                query = query.filter(Record.key.startswith(key_prefix))
+                query = query.filter(
+                    Record.key.like(f"{_like_escape(key_prefix)}%", escape="\\")
+                )
             if owner is not None:
                 query = query.filter(Record.owner == owner)
             for tag in tags or []:

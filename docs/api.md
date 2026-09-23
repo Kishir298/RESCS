@@ -14,9 +14,9 @@ and `/redoc`. Versioned under `/api/v1`.
   requester supplies `owner` freely (default `system`).
 - **Request correlation**: every HTTP request is assigned a request id
   (`X-Request-ID`), which is echoed back on the response for tracing/audit.
-  A caller-supplied `X-Request-ID` of up to 128 characters is honoured when
-  present; otherwise one is generated. The header name is configurable via
-  `RESCS_REQUEST_ID_HEADER` (default `X-Request-ID`).
+  A caller-supplied `X-Request-ID` matching `^[A-Za-z0-9._-]{1,128}$` is
+  honoured when present; otherwise one is generated. The header name is
+  configurable via `RESCS_REQUEST_ID_HEADER` (default `X-Request-ID`).
 - Requests/responses are JSON unless noted (file uploads/downloads are
   binary multipart).
 - List endpoints paginate with `limit` (1..500, default 100) and `offset`.
@@ -43,6 +43,7 @@ and `/redoc`. Versioned under `/api/v1`.
 | 412 | `PRECONDITION_FAILED` | stale `If-Match` etag; re-read and retry |
 | 413 | `PAYLOAD_TOO_LARGE` | file/metadata exceeds configured caps |
 | 422 | `VALIDATION_ERROR` | body fails validation |
+| 429 | `RATE_LIMITED` | in-memory limiter enabled and bucket exceeded (see `docs/rate-limiting.md`) |
 | 500 | `STORAGE_ERROR` / `INTERNAL_ERROR` | storage/backend failure |
 | 503 | `DEPENDENCY_UNAVAILABLE` | database/object store unreachable |
 
@@ -192,11 +193,15 @@ See `docs/lifecycle.md`.
 ## Uploads (resumable)
 
 ```
-POST /api/v1/uploads -> create session {owner, filename, size?, tags?, expires_at?, ttl_seconds?}
-PUT  /api/v1/uploads/{id}/chunk -> append chunk (offset-checked)
-GET  /api/v1/uploads/{id} -> session status
-POST /api/v1/uploads/{id}/finalize -> 201 File (SHA-256 verified)
+POST   /api/v1/uploads -> 201 create session {owner, filename, content_type?, total_size, chunk_size?, checksum?, metadata?, tags?}
+PUT    /api/v1/uploads/{id}/chunks?offset=N (or Content-Range) -> 200 append chunk (offset-checked)
+GET    /api/v1/uploads/{id} -> 200 session status
+POST   /api/v1/uploads/{id}/finalize -> 200 File (SHA-256 verified)
+DELETE /api/v1/uploads/{id} -> 204 cancel
 ```
+Upload sessions expire server-side (+24h, `expires_at`); create takes no
+`expires_at`/`ttl_seconds`. Chunk bodies are bounded to `chunk_size`
+(`RESCS_MAX_FILE_SIZE` when smaller); oversize is `413 PAYLOAD_TOO_LARGE`.
 See `docs/uploads.md`.
 
 ## Contract
@@ -233,13 +238,14 @@ GET /health         -> full status (service + version + checks)
 Record {
   id, namespace, key, value, metadata, owner,
   version, idempotency_key, etag, created_at, updated_at,
-  tags, expires_at, ttl_seconds, deleted_at, deleted_by
+  tags, expires_at, deleted_at, deleted_by
 }
 File {
   id, filename, mime_type, size, storage_path, sha256, metadata, owner,
   version, idempotency_key, etag, created_at, updated_at,
-  tags, expires_at, ttl_seconds, deleted_at, deleted_by
+  tags, expires_at, deleted_at, deleted_by
 }
+(`ttl_seconds` is input-only for create/update; reads expose `expires_at`.)
 Audit {
   id, timestamp, operation, resource_type, resource_id, owner,
   request_id, outcome, error_code

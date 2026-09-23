@@ -31,19 +31,43 @@ class LocalObjectStore:
                 "unsafe object identifier",
                 details={"object_id": object_id},
             )
+        # _SAFE_ID allows "." / ".." as single chars; reject them plus any
+        # path separators explicitly so traversal can never resolve.
+        if object_id in (".", "..") or "/" in object_id or "\\" in object_id:
+            raise StorageError(
+                "unsafe object identifier",
+                details={"object_id": object_id},
+            )
         return self._base / object_id
 
     def put(self, object_id: str, data: bytes) -> None:
         target = self._resolve(object_id)
+        temp: Path | None = None
         try:
             temp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
             temp.write_bytes(data)
             os.replace(temp, target)
         except OSError as exc:
+            if temp is not None:
+                try:
+                    temp.unlink(missing_ok=True)
+                except Exception:
+                    pass
             raise StorageError(
                 "failed to write object",
                 details={"object_id": object_id, "cause": str(exc)},
             ) from exc
+        except Exception:
+            if temp is not None:
+                try:
+                    temp.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            raise
+
+    def close(self) -> None:
+        """No-op for interface parity (filesystem store holds no handle)."""
+        return None
 
     def get(self, object_id: str) -> bytes:
         target = self._resolve(object_id)

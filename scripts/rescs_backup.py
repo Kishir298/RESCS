@@ -65,18 +65,24 @@ def _pg_dump_invocation(db_url: str) -> tuple[list[str], dict[str, str] | None]:
 
     The password (if any) travels via the ``PGPASSWORD`` environment
     variable; argv carries a password-redacted URI with a libpq-native
-    scheme (``postgresql://``). Returns ``(argv_without_output_flag, env)``
-    where ``env`` is None when no password handling was possible (legacy
-    path: full URL on argv, unchanged behavior).
+    scheme (``postgresql://``). Raises :class:`ValueError` when no safe
+    invocation can be built (never places the full URL on argv, so no
+    password leaks via process listings); callers must fail closed.
     """
     from urllib.parse import unquote, urlsplit, urlunsplit
 
     try:
         parts = urlsplit(db_url)
-    except ValueError:
-        return ["pg_dump", db_url, "-Fc"], None
+    except ValueError as exc:
+        raise ValueError(
+            "cannot safely build pg_dump invocation: unparseable database URL "
+            "(refusing to place credentials on argv)"
+        ) from exc
     if not parts.hostname:
-        return ["pg_dump", db_url, "-Fc"], None
+        raise ValueError(
+            "cannot safely build pg_dump invocation: database URL has no host "
+            "(refusing to place full URL on argv)"
+        )
     netloc = parts.hostname
     if parts.port:
         netloc += f":{parts.port}"
@@ -175,7 +181,11 @@ def main(argv: list[str] | None = None) -> int:
         # Postgres and other backends require an external dump tool; never
         # pretend success without a real dump artifact.
         dumped = out_tmp / "db.dump"
-        pg_argv, pg_env = _pg_dump_invocation(db_url)
+        try:
+            pg_argv, pg_env = _pg_dump_invocation(db_url)
+        except ValueError as exc:
+            # Never place the full URL (password) on argv; fail closed.
+            return fail(out_tmp, out_final, f"postgres backup refused: {exc}", manifest)
         try:
             proc = subprocess.run(
                 [*pg_argv, "-f", str(dumped)],

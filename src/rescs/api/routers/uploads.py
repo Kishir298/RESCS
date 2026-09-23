@@ -85,7 +85,36 @@ async def put_chunk(
         from rescs.errors import InvalidRequestError
 
         raise InvalidRequestError("chunk offset required (?offset= or Content-Range)", details={})
-    data = await request.body()
+    # Bounded intake: fail fast on Content-Length, then stream with a cap
+    # so a huge body cannot OOM via unbounded request.body().
+    from rescs.errors import PayloadTooLargeError
+
+    allowed = session.chunk_size
+    if settings.max_file_size and settings.max_file_size > 0:
+        allowed = min(allowed, settings.max_file_size)
+    claimed = request.headers.get("content-length")
+    if claimed is not None:
+        try:
+            if int(claimed) > allowed:
+                raise PayloadTooLargeError(
+                    f"chunk exceeds maximum of {allowed} bytes",
+                    details={"size": int(claimed), "max": allowed},
+                )
+        except ValueError:
+            pass
+    parts: list[bytes] = []
+    received = 0
+    async for piece in request.stream():
+        if not piece:
+            continue
+        received += len(piece)
+        if received > allowed:
+            raise PayloadTooLargeError(
+                f"chunk exceeds maximum of {allowed} bytes",
+                details={"size": received, "max": allowed},
+            )
+        parts.append(piece)
+    data = b"".join(parts)
     updated = services.uploads.put_chunk(session_id, offset, data, actor=principal)
     return UploadRead.from_domain(updated)
 

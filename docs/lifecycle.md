@@ -53,7 +53,7 @@ read/write time; physical removal happens through explicit cleanup:
 
 ```
 POST /api/v1/admin/cleanup
-{"dry_run": false, "batch": 500}
+{"dry_run": false, "batch": 500}   # batch: 1..5000, default 500
 -> {"dry_run": false, "records_purged": N, "files_purged": M, "uploads_cleaned": U, "audit_pruned": K}
 ```
 

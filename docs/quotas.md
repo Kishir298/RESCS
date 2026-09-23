@@ -65,3 +65,8 @@ server-side in the service layer on every write path:
 Accounting counts live, non-expired resources per owner (deleted and
 expired rows stop consuming quota, encouraging cleanup). Counts are
 best-effort under concurrency (check-then-act; document, don't oversell).
+
+Locked mode: when `RESCS_API_KEY_OWNER` is set, every request is scoped to
+that single owner (writes claiming another `owner` are `401`, reads of
+another owner's resource are `403`); quotas then apply to the locked owner
+only.

@@ -27,6 +27,9 @@ put(object_id, data) -> None
 get(object_id) -> bytes          # raises StorageError when missing
 delete(object_id) -> None
 exists(object_id) -> bool
+put_stream(object_id, chunks) -> None   # bounded-memory write
+get_stream(object_id, chunk_size=1MiB) -> Iterator[bytes]  # bounded-memory read
+size(object_id) -> int
 ```
 
 Implemented backends:

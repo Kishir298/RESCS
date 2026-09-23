@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from contextvars import ContextVar
@@ -13,12 +14,14 @@ logger = get_logger("rescs.access")
 
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
+_SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
 
 def make_request_id(header_value: str | None, settings: Settings) -> str:
     """Honour a caller-supplied tracing id, otherwise mint one."""
     if header_value:
         value = header_value.strip()
-        if value and len(value) <= 128:
+        if _SAFE_REQUEST_ID.match(value):
             return value
     return uuid.uuid4().hex
 
