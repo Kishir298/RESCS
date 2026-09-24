@@ -46,8 +46,7 @@ device.json
 *.db
 rescs_dev.db
 rescs_dev.db-*
-rescs_storage/
-rescs_test_storage/
+rescs_*_storage/
 
 # OS files
 Thumbs.db
