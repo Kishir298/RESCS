@@ -8,7 +8,7 @@ version = "0.3.0"
 description = "Rishik's Efficient System for Cloud Storage"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "Proprietary" }
 authors = [{ name = "Kishir298" }]
 
 [project.optional-dependencies]

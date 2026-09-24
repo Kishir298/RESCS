@@ -161,4 +161,4 @@ and `CHANGELOG.md` for per-phase notes.
 
 ## License
 
-MIT (provisional).
+Proprietary — all rights reserved (no LICENSE file; MIT provisional claim removed 2026-09-24).
