@@ -40,7 +40,39 @@ def settings() -> Settings:
 
 @pytest.fixture()
 def app(settings: Settings):
-    return create_app(settings=settings)
+    # Use memory storage backend for test isolation
+    test_settings = Settings(
+        _env_file=None,
+        api_key=settings.api_key,
+        api_key_owner=settings.api_key_owner,
+        database_url=settings.database_url,
+        storage_dir=settings.storage_dir,
+        storage_backend="memory",
+        environment=settings.environment,
+        log_level=settings.log_level,
+        auto_create_schema=settings.auto_create_schema,
+        request_id_header=settings.request_id_header,
+        max_records_per_owner=settings.max_records_per_owner,
+        max_files_per_owner=settings.max_files_per_owner,
+        max_bytes_per_owner=settings.max_bytes_per_owner,
+        max_file_size=settings.max_file_size,
+        max_metadata_bytes=settings.max_metadata_bytes,
+        max_bulk_batch=settings.max_bulk_batch,
+        audit_retention_days=settings.audit_retention_days,
+        max_ttl_seconds=settings.max_ttl_seconds,
+        streaming_threshold_bytes=settings.streaming_threshold_bytes,
+        s3_endpoint=settings.s3_endpoint,
+        s3_bucket=settings.s3_bucket,
+        s3_region=settings.s3_region,
+        s3_access_key=settings.s3_access_key,
+        s3_secret_key=settings.s3_secret_key,
+        s3_path_prefix=settings.s3_path_prefix,
+        rate_limit_enabled=settings.rate_limit_enabled,
+        rate_limit_general_per_minute=settings.rate_limit_general_per_minute,
+        rate_limit_writes_per_minute=settings.rate_limit_writes_per_minute,
+        rate_limit_uploads_per_minute=settings.rate_limit_uploads_per_minute,
+    )
+    return create_app(settings=test_settings)
 
 
 @pytest.fixture()
@@ -63,6 +95,7 @@ def scoped_app(settings: Settings):
         api_key_owner=SCOPED_OWNER,
         database_url="sqlite+pysqlite:///:memory:",
         storage_dir="rescs_test_storage",
+        storage_backend="memory",
         environment="test",
     )
     return create_app(settings=scoped_settings)
