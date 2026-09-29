@@ -9,11 +9,11 @@ from rescs.db.session import SessionFactory, create_session_factory, session_sco
 
 __all__ = [
     "Database",
+    "SchemaManager",
+    "SessionFactory",
     "bootstrap_database",
     "build_engine",
     "check_connectivity",
-    "SchemaManager",
-    "SessionFactory",
     "create_session_factory",
     "session_scope",
 ]

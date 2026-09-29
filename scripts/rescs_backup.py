@@ -25,7 +25,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -156,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     blobs_out.mkdir(parents=True, exist_ok=True)
 
     manifest: dict = {
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "database_url_scheme": _url_scheme(args.database_url),
         "versions": _versions(),
         "files": [],

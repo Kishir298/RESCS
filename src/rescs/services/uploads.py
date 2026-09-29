@@ -6,18 +6,29 @@ import hashlib
 import json
 import threading
 import uuid
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from datetime import timedelta
 
 from rescs.config import Settings
-from rescs.domain import FileObjectData, UploadSessionData, normalize_tags, utcnow, validate_tags
-from rescs.errors import ConflictError, InvalidRequestError, NotFoundError, PayloadTooLargeError, QuotaExceededError, RESCSError, StorageError
+from rescs.domain import (
+    FileObjectData,
+    UploadSessionData,
+    normalize_tags,
+    utcnow,
+    validate_tags,
+)
+from rescs.errors import (
+    ConflictError,
+    InvalidRequestError,
+    NotFoundError,
+    PayloadTooLargeError,
+    QuotaExceededError,
+    RESCSError,
+)
 from rescs.etag import file_etag
 from rescs.interfaces.object_store import ObjectStore
 from rescs.interfaces.repository import FileObjectRepository, UploadSessionRepository
-from rescs.schemas.file_object import FileObjectCreate
 from rescs.services.audit import AuditService
-from rescs.services.expiry import resolve_expiry
 
 MIN_CHUNK = 64 * 1024  # 64 KiB
 MAX_CHUNK = 64 * 1024 * 1024  # 64 MiB

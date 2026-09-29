@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from rescs.storage.s3 import FakeS3ObjectStore, build_object_store
 from rescs.config import Settings
 from rescs.errors import ConfigurationError
+from rescs.storage.s3 import FakeS3ObjectStore, build_object_store
 
 
 def test_fake_s3_roundtrip():

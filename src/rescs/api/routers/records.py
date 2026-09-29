@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Query, Response
 
-from rescs.api.deps import get_settings, get_services, parse_etag
+from rescs.api.deps import get_services, get_settings, parse_etag
 from rescs.config import Settings
 from rescs.schemas.record import (
     BulkRequest,

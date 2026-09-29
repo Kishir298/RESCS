@@ -6,7 +6,7 @@ cleanup endpoint purges them deterministically (dry-run supported).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -21,7 +21,7 @@ CLEANUP = "/api/v1/admin/cleanup"
 
 
 def _future(hours: int = 1) -> str:
-    return (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+    return (datetime.now(UTC) + timedelta(hours=hours)).isoformat()
 
 
 def test_expired_record_behaves_as_absent(client: TestClient):
@@ -34,7 +34,7 @@ def test_expired_record_behaves_as_absent(client: TestClient):
     # Force expiry by patching the timestamp into the past.
     services = client.app.state.services
     row = services.records._repo.get_including_deleted(created["id"])
-    row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     services.records._repo.update(row)
 
     assert client.get(f"{RECORDS}/{created['id']}").status_code == 404
@@ -46,7 +46,7 @@ def test_expired_record_behaves_as_absent(client: TestClient):
 
 
 def test_past_expiry_rejected(client: TestClient):
-    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     response = client.post(
         RECORDS,
         json={"namespace": "ttl", "key": "already-dead", "value": {}, "expires_at": past},
@@ -62,7 +62,7 @@ def test_cleanup_dry_run_then_purge(client: TestClient):
         json={"namespace": "ttl", "key": "cleanup-me", "value": {}, "expires_at": _future()},
     ).json()
     row = services.records._repo.get_including_deleted(created["id"])
-    row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     services.records._repo.update(row)
 
     uploaded = client.post(
@@ -72,7 +72,7 @@ def test_cleanup_dry_run_then_purge(client: TestClient):
     )
     assert uploaded.status_code == 201, uploaded.text
     file_row = services.files._repo.get_including_deleted(uploaded.json()["id"])
-    file_row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    file_row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     services.files._repo.update(file_row)
 
     dry = client.post(CLEANUP, json={"dry_run": True, "batch": 500}).json()
@@ -97,7 +97,7 @@ def test_expired_occupant_reclaimed_on_write(client: TestClient):
         json={"namespace": "ttl", "key": "reclaimed", "value": {"gen": 1}, "expires_at": _future()},
     ).json()
     row = services.records._repo.get_including_deleted(created["id"])
-    row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     services.records._repo.update(row)
 
     # A fresh PUT transparently replaces the expired occupant (no 409).

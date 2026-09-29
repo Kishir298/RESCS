@@ -31,7 +31,7 @@ class SchemaManager:
         self._engine = engine
 
     def migrate(self) -> None:
-        import rescs.models  # noqa: F401 - populate ORM metadata
+        import rescs.models
 
         Base = rescs.models.Base
         if self._needs_v02_upgrade():
@@ -118,7 +118,7 @@ class SchemaManager:
             connection.execute(text("DROP TABLE records_legacy_v01"))
 
     def _upgrade_postgres(self) -> None:
-        import rescs.models  # noqa: F401 - populate ORM metadata
+        import rescs.models
 
         Base = rescs.models.Base
         Base.metadata.create_all(self._engine)

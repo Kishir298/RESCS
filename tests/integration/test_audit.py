@@ -7,7 +7,7 @@ timestamp, operation, resource identity, owner, request ID, and outcome.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -112,7 +112,7 @@ def test_audit_owner_scoping(scoped_client: TestClient):
 def test_audit_retention_prune(client: TestClient):
     client.post(RECORDS, json={"namespace": "au", "key": "prune-me", "value": {}})
     services = client.app.state.services
-    cutoff = datetime.now(timezone.utc) + timedelta(seconds=1)
+    cutoff = datetime.now(UTC) + timedelta(seconds=1)
     pruned = services.audit.prune_before(cutoff)
     assert pruned >= 1
     assert client.get(AUDIT).json()["total"] == 0

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from rescs.domain import FileObjectData, RecordData, ensure_utc, utcnow
 
@@ -12,7 +12,7 @@ def test_utcnow_is_aware():
 
 
 def test_ensure_utc_preserves_aware():
-    value = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    value = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     assert ensure_utc(value) == value
 
 

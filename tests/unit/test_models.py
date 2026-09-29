@@ -6,7 +6,6 @@ import uuid
 
 import pytest
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from rescs.domain import FileObjectData, RecordData
 from rescs.models import FileObject, Record
@@ -50,10 +49,9 @@ def test_record_namespace_key_unique(sqlite_session_factory):
     with sqlite_session_factory() as session:
         session.add(Record.from_domain(first))
         session.commit()
-    with pytest.raises(IntegrityError):
-        with sqlite_session_factory() as session:
-            session.add(Record.from_domain(second))
-            session.commit()
+    with pytest.raises(IntegrityError), sqlite_session_factory() as session:
+        session.add(Record.from_domain(second))
+        session.commit()
 
 
 def test_file_object_round_trip(sqlite_session_factory):
@@ -101,7 +99,6 @@ def test_file_object_idempotency_unique(sqlite_session_factory):
     with sqlite_session_factory() as session:
         session.add(FileObject.from_domain(first))
         session.commit()
-    with pytest.raises(IntegrityError):
-        with sqlite_session_factory() as session:
-            session.add(FileObject.from_domain(second))
-            session.commit()
+    with pytest.raises(IntegrityError), sqlite_session_factory() as session:
+        session.add(FileObject.from_domain(second))
+        session.commit()

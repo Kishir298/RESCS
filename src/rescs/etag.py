@@ -32,5 +32,5 @@ def content_etag(
 
 def file_etag(sha256: str, size: int) -> str:
     """Stable hash derived from a stored blob's fingerprint."""
-    raw = f"{sha256}:{size}".encode("utf-8")
+    raw = f"{sha256}:{size}".encode()
     return hashlib.sha256(raw).hexdigest()

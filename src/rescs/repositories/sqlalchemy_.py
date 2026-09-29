@@ -13,7 +13,15 @@ from datetime import datetime
 from sqlalchemy import String, and_, cast, func, or_
 
 from rescs.db.session import SessionFactory, session_scope
-from rescs.domain import AuditData, FileObjectData, Page, RecordData, UploadSessionData, ensure_utc, utcnow
+from rescs.domain import (
+    AuditData,
+    FileObjectData,
+    Page,
+    RecordData,
+    UploadSessionData,
+    ensure_utc,
+    utcnow,
+)
 from rescs.errors import ConflictError, NotFoundError
 from rescs.models import AuditEvent, FileObject, Record
 from rescs.models.upload_session import UploadSession

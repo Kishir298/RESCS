@@ -8,7 +8,8 @@ registered checks is by definition healthy/ready.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 ComponentStatus = str  # "ok" | "degraded" | "down"
 

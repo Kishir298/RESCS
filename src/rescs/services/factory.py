@@ -11,8 +11,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from rescs.db.bootstrap import Database
 from rescs.config import Settings
+from rescs.db.bootstrap import Database
 from rescs.interfaces.object_store import ObjectStore
 from rescs.repositories.memory import (
     InMemoryAuditRepository,

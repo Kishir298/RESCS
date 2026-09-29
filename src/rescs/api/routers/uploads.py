@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, Request
 
-from rescs.api.deps import get_services
+from rescs.api.deps import get_services, get_settings
 from rescs.config import Settings
-from rescs.api.deps import get_settings
 from rescs.schemas.file_object import FileObjectRead
 from rescs.schemas.upload import UploadCreate, UploadRead
 from rescs.security import assert_principal_is_owner, enforce_owner, require_api_key

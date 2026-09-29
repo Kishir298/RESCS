@@ -18,7 +18,14 @@ from collections.abc import Iterable, Iterator
 from datetime import datetime
 
 from rescs.config import Settings
-from rescs.domain import FileObjectData, Page, ensure_utc, normalize_tags, utcnow, validate_tags
+from rescs.domain import (
+    FileObjectData,
+    Page,
+    ensure_utc,
+    normalize_tags,
+    utcnow,
+    validate_tags,
+)
 from rescs.errors import (
     ConflictError,
     InvalidRequestError,

@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from rescs.domain import MAX_TAG_LENGTH, MAX_TAGS, RecordData, ensure_utc
+from rescs.domain import MAX_TAG_LENGTH, MAX_TAGS, RecordData
 
 _TAG_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 

@@ -18,14 +18,21 @@ from datetime import datetime
 from typing import Any
 
 from rescs.config import Settings
-from rescs.domain import Page, RecordData, ensure_utc, normalize_tags, utcnow, validate_tags
+from rescs.domain import (
+    Page,
+    RecordData,
+    ensure_utc,
+    normalize_tags,
+    utcnow,
+    validate_tags,
+)
 from rescs.errors import (
     ConflictError,
     InvalidRequestError,
     NotFoundError,
+    PayloadTooLargeError,
     PreconditionFailedError,
     QuotaExceededError,
-    PayloadTooLargeError,
     RESCSError,
 )
 from rescs.etag import content_etag

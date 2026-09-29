@@ -96,7 +96,7 @@ def test_upload_large_streaming_finalize(client: TestClient):
     # ~2.5 MiB across chunk_size boundaries; exercises streaming finalize path.
     chunk_size = 262144  # 256 KiB (>= 64 KiB minimum)
     total = chunk_size * 9 + 12345
-    data = bytes((i % 251 for i in range(total)))
+    data = bytes(i % 251 for i in range(total))
     s = client.post(
         UPLOADS, json={"filename": "big.bin", "total_size": total, "chunk_size": chunk_size}
     )
@@ -140,8 +140,9 @@ def test_upload_wrong_total_and_chunk_rules(client: TestClient):
 
 
 def test_upload_expired_session_cannot_finalize(client: TestClient):
-    from rescs.domain import utcnow
     from datetime import timedelta
+
+    from rescs.domain import utcnow
 
     s = client.post(UPLOADS, json={"filename": "e.bin", "total_size": 3}).json()
     sid = s["id"]

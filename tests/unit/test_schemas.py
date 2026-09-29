@@ -8,7 +8,11 @@ import pytest
 from pydantic import ValidationError
 
 from rescs.domain import RecordData
-from rescs.schemas.file_object import DEFAULT_MIME_TYPE, FileObjectCreate, FileObjectRead
+from rescs.schemas.file_object import (
+    DEFAULT_MIME_TYPE,
+    FileObjectCreate,
+    FileObjectRead,
+)
 from rescs.schemas.record import RecordCreate, RecordRead, RecordUpdate
 
 

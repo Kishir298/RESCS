@@ -16,12 +16,12 @@ from sqlalchemy import make_url
 from rescs.config import Settings
 from rescs.db.bootstrap import bootstrap_database
 from rescs.db.engine import build_engine, check_connectivity
+from rescs.repositories.memory import InMemoryFileObjectRepository
 from rescs.repositories.sqlalchemy_ import SQLAlchemyRecordRepository
 from rescs.schemas.record import RecordCreate
+from rescs.services.files import FileService
 from rescs.services.records import RecordService
 from rescs.storage.memory import MemoryObjectStore
-from rescs.services.files import FileService
-from rescs.repositories.memory import InMemoryFileObjectRepository
 
 INTEGRATION_URL = os.environ.get("RESCS_INTEGRATION_DATABASE_URL", "")
 

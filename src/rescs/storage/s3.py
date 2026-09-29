@@ -142,7 +142,7 @@ class S3ObjectStore:
 
     def close(self) -> None:
         """No-op for interface parity with local store."""
-        return None
+        return
 
     def size(self, object_id: str) -> int:
         try:

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from rescs.api.deps import get_settings, get_services
+from rescs.api.deps import get_services, get_settings
 from rescs.config import Settings
 from rescs.domain import utcnow
 from rescs.schemas.audit import AuditPage, AuditRead

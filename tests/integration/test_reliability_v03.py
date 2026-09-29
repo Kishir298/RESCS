@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import UTC
 
 from fastapi.testclient import TestClient
 
@@ -16,9 +17,9 @@ def test_ttl_seconds_and_max(client: TestClient):
     assert r.status_code == 201, r.text
     assert r.json()["expires_at"] is not None
     # Both set rejected.
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
 
-    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    future = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
     bad = client.post(RECORDS, json={"namespace": "rel", "key": "ttl2", "value": {}, "expires_at": future, "ttl_seconds": 10})
     assert bad.status_code == 422
     # Zero/negative rejected.

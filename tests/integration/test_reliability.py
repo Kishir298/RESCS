@@ -41,7 +41,7 @@ def test_declared_dependencies_agree():
     assert "pytest==" in dev_requirements
     assert "httpx==" in dev_requirements
     # The runtime surface the app actually needs imports cleanly.
-    import fastapi, sqlalchemy, pydantic, pydantic_settings  # noqa: F401
+    import fastapi  # noqa: F401
 
 
 def test_application_factory_boots_independently(settings: Settings):

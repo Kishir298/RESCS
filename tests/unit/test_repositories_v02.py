@@ -7,7 +7,7 @@ from datetime import timedelta
 
 import pytest
 
-from rescs.domain import RecordData, ensure_utc, utcnow
+from rescs.domain import utcnow
 from rescs.errors import NotFoundError
 from rescs.repositories.memory import (
     InMemoryFileObjectRepository,

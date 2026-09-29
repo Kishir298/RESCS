@@ -45,9 +45,8 @@ def test_check_connectivity_unreachable_raises_domain_error():
 
 def test_sqlite_user_has_sqlite_tables_creatable():
     engine = build_engine("sqlite+pysqlite:///:memory:")
-    from rescs.db.base import Base
-
     from rescs import models  # noqa: F401
+    from rescs.db.base import Base
 
     Base.metadata.create_all(engine)
     inspector = inspect(engine)

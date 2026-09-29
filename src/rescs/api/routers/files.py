@@ -12,7 +12,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
-from rescs.api.deps import get_settings, get_services, parse_etag
+from rescs.api.deps import get_services, get_settings, parse_etag
 from rescs.config import Settings
 from rescs.domain import normalize_tags
 from rescs.errors import InvalidRequestError, PayloadTooLargeError

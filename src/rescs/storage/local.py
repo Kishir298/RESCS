@@ -67,7 +67,7 @@ class LocalObjectStore:
 
     def close(self) -> None:
         """No-op for interface parity (filesystem store holds no handle)."""
-        return None
+        return
 
     def get(self, object_id: str) -> bytes:
         target = self._resolve(object_id)

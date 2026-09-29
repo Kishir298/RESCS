@@ -10,9 +10,9 @@ from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from rescs.errors import (
-    RESCSError,
     ConflictError,
     DependencyUnavailableError,
+    RESCSError,
     StorageError,
 )
 

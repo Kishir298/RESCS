@@ -38,10 +38,9 @@ def test_session_scope_commits():
 def test_session_scope_rolls_back_on_domain_error():
     factory = make_factory()
     record = RecordData(id=str(uuid.uuid4()), namespace="n", key="k", value={})
-    with pytest.raises(ConflictError):
-        with session_scope(factory) as session:
-            session.add(Record.from_domain(record))
-            raise ConflictError("boom")
+    with pytest.raises(ConflictError), session_scope(factory) as session:
+        session.add(Record.from_domain(record))
+        raise ConflictError("boom")
     with factory() as session:
         assert session.get(Record, record.id) is None
 
@@ -89,6 +88,5 @@ def test_session_scope_maps_generic_error_to_storage():
         def close(self):
             pass
 
-    with pytest.raises(StorageError):
-        with session_scope(lambda: FakeSession()):
-            pass
+    with pytest.raises(StorageError), session_scope(lambda: FakeSession()):
+        pass

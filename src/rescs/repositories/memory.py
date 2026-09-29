@@ -11,7 +11,15 @@ import json
 import threading
 from typing import Generic, TypeVar
 
-from rescs.domain import AuditData, FileObjectData, Page, RecordData, UploadSessionData, ensure_utc, utcnow
+from rescs.domain import (
+    AuditData,
+    FileObjectData,
+    Page,
+    RecordData,
+    UploadSessionData,
+    ensure_utc,
+    utcnow,
+)
 from rescs.errors import ConflictError, NotFoundError
 
 T = TypeVar("T", RecordData, FileObjectData)
