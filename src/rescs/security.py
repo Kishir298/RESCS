@@ -91,6 +91,13 @@ def require_api_key(principal: str = Depends(authenticate_api_key)) -> str:
     return principal
 
 
+def get_device_id(
+    x_device_id: str | None = Header(default=None, alias="X-Device-Id"),
+) -> str | None:
+    """Extract device ID from ``X-Device-Id`` header if present."""
+    return x_device_id
+
+
 # ============================================================================
 # Device-Scoped Access Validation
 # ============================================================================

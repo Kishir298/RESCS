@@ -20,9 +20,13 @@ from rescs.schemas.record import (
 )
 from rescs.security import (
     assert_principal_is_owner,
+    assert_device_ownership,
     enforce_owner,
+    get_device_id,
     require_api_key,
     scoped_query_owner,
+    validate_device_namespace,
+    validate_device_owner,
 )
 from rescs.services.factory import Services
 
@@ -88,6 +92,23 @@ def _apply_etag_header(response: Response, record) -> None:
     response.headers["ETag"] = record.etag
 
 
+def _apply_device_scope(
+    *,
+    namespace: str | None,
+    owner: str | None,
+    device_id: str | None,
+    operation: str,
+) -> tuple[str | None, str | None]:
+    """Apply device-scoped validation/transformation to namespace and owner."""
+    if device_id is None:
+        return namespace, owner
+    if namespace is not None:
+        namespace = validate_device_namespace(namespace, device_id, operation)
+    if owner is not None:
+        owner = validate_device_owner(owner, device_id, operation)
+    return namespace, owner
+
+
 @router.post("", status_code=201, response_model=RecordRead)
 def create_record(
     payload: RecordCreate,
@@ -95,9 +116,16 @@ def create_record(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> RecordRead:
     payload.owner = enforce_owner(
         requested=payload.owner, principal=principal, settings=settings
+    )
+    payload.namespace, payload.owner = _apply_device_scope(
+        namespace=payload.namespace,
+        owner=payload.owner,
+        device_id=device_id,
+        operation="create record",
     )
     record = RecordRead.from_domain(services.records.create(payload))
     _apply_etag_header(response, record)
@@ -111,10 +139,17 @@ def put_record(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> RecordRead:
     payload.owner = enforce_owner(
         requested=payload.owner, principal=principal, settings=settings
+    )
+    payload.namespace, payload.owner = _apply_device_scope(
+        namespace=payload.namespace,
+        owner=payload.owner,
+        device_id=device_id,
+        operation="put record",
     )
     record = RecordRead.from_domain(
         services.records.put(payload, expected_etag=parse_etag(if_match))
@@ -128,6 +163,7 @@ def list_records(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     namespace: str | None = Query(default=None),
     key_prefix: str | None = Query(default=None),
     owner: str | None = Query(default=None),
@@ -143,6 +179,12 @@ def list_records(
     offset: int = Query(default=0, ge=0),
 ) -> RecordPage:
     owner = scoped_query_owner(owner=owner, principal=principal, settings=settings)
+    namespace, owner = _apply_device_scope(
+        namespace=namespace,
+        owner=owner,
+        device_id=device_id,
+        operation="list records",
+    )
     return _page(
         services,
         namespace=namespace,
@@ -167,11 +209,19 @@ def _authorized_record(
     *,
     principal: str,
     settings: Settings,
+    device_id: str | None = None,
 ) -> Any:
     record = services.records.get(record_id)
     assert_principal_is_owner(
         record_owner=record.owner, principal=principal, settings=settings
     )
+    if device_id is not None:
+        assert_device_ownership(
+            resource_owner=record.owner,
+            resource_namespace=record.namespace,
+            device_id=device_id,
+            operation="read record",
+        )
     return record
 
 
@@ -181,11 +231,19 @@ def _authorized_record_including_deleted(
     *,
     principal: str,
     settings: Settings,
+    device_id: str | None = None,
 ) -> Any:
     record = services.records.get_including_deleted(record_id)
     assert_principal_is_owner(
         record_owner=record.owner, principal=principal, settings=settings
     )
+    if device_id is not None:
+        assert_device_ownership(
+            resource_owner=record.owner,
+            resource_namespace=record.namespace,
+            device_id=device_id,
+            operation="read record",
+        )
     return record
 
 
@@ -195,10 +253,11 @@ def get_record(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> RecordRead:
     return RecordRead.from_domain(
         _authorized_record(
-            services, record_id, principal=principal, settings=settings
+            services, record_id, principal=principal, settings=settings, device_id=device_id
         )
     )
 
@@ -211,9 +270,12 @@ def update_record(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> RecordRead:
-    _authorized_record(services, record_id, principal=principal, settings=settings)
+    _authorized_record(
+        services, record_id, principal=principal, settings=settings, device_id=device_id
+    )
     record = RecordRead.from_domain(
         services.records.update(
             record_id, payload, expected_etag=parse_etag(if_match)
@@ -229,9 +291,12 @@ def delete_record(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> None:
-    _authorized_record(services, record_id, principal=principal, settings=settings)
+    _authorized_record(
+        services, record_id, principal=principal, settings=settings, device_id=device_id
+    )
     services.records.delete(record_id, expected_etag=parse_etag(if_match))
 
 
@@ -242,10 +307,11 @@ def restore_record(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> RecordRead:
     _authorized_record_including_deleted(
-        services, record_id, principal=principal, settings=settings
+        services, record_id, principal=principal, settings=settings, device_id=device_id
     )
     record = RecordRead.from_domain(
         services.records.restore(
@@ -262,10 +328,11 @@ def purge_record(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> None:
     _authorized_record_including_deleted(
-        services, record_id, principal=principal, settings=settings
+        services, record_id, principal=principal, settings=settings, device_id=device_id
     )
     services.records.purge(
         record_id, actor=principal, expected_etag=parse_etag(if_match)
@@ -278,6 +345,7 @@ def bulk_records(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> BulkResponse:
     operations: list[dict[str, Any]] = []
     for item in payload.operations:
@@ -290,6 +358,12 @@ def bulk_records(
                 requested=record_payload.owner,
                 principal=principal,
                 settings=settings,
+            )
+            record_payload.namespace, record_payload.owner = _apply_device_scope(
+                namespace=record_payload.namespace,
+                owner=record_payload.owner,
+                device_id=device_id,
+                operation="bulk record",
             )
             entry["record"] = record_payload.model_dump()
         if item.if_match is not None:

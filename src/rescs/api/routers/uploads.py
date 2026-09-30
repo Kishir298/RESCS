@@ -8,7 +8,15 @@ from rescs.api.deps import get_services, get_settings
 from rescs.config import Settings
 from rescs.schemas.file_object import FileObjectRead
 from rescs.schemas.upload import UploadCreate, UploadRead
-from rescs.security import assert_principal_is_owner, enforce_owner, require_api_key
+from rescs.security import (
+    assert_device_ownership,
+    assert_principal_is_owner,
+    enforce_owner,
+    get_device_id,
+    require_api_key,
+    validate_device_namespace,
+    validate_device_owner,
+)
 from rescs.services.factory import Services
 
 router = APIRouter(
@@ -18,14 +26,30 @@ router = APIRouter(
 )
 
 
+def _apply_device_scope(
+    *,
+    owner: str | None,
+    device_id: str | None,
+    operation: str,
+) -> str | None:
+    """Apply device-scoped validation/transformation to owner."""
+    if device_id is None:
+        return owner
+    if owner is not None:
+        owner = validate_device_owner(owner, device_id, operation)
+    return owner
+
+
 @router.post("", status_code=201, response_model=UploadRead)
 def create_upload(
     payload: UploadCreate,
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> UploadRead:
     owner = enforce_owner(requested=payload.owner, principal=principal, settings=settings)
+    owner = _apply_device_scope(owner=owner, device_id=device_id, operation="create upload")
     session = services.uploads.create(
         owner=owner,
         filename=payload.filename,
@@ -46,9 +70,17 @@ def get_upload(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> UploadRead:
     session = services.uploads.get(session_id)
     assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
+    if device_id is not None:
+        assert_device_ownership(
+            resource_owner=session.owner,
+            resource_namespace="uploads",
+            device_id=device_id,
+            operation="read upload",
+        )
     return UploadRead.from_domain(session)
 
 
@@ -59,12 +91,20 @@ async def put_chunk(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     content_range: str | None = Header(default=None, alias="Content-Range"),
     offset: int | None = None,
 ) -> UploadRead:
     # Owner check before reading body.
     session = services.uploads.get(session_id)
     assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
+    if device_id is not None:
+        assert_device_ownership(
+            resource_owner=session.owner,
+            resource_namespace="uploads",
+            device_id=device_id,
+            operation="upload chunk",
+        )
     if offset is None and content_range:
         # Accept "bytes <offset>-<end>/<total>" — use start offset.
         try:
@@ -124,9 +164,17 @@ def finalize_upload(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> FileObjectRead:
     session = services.uploads.get(session_id)
     assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
+    if device_id is not None:
+        assert_device_ownership(
+            resource_owner=session.owner,
+            resource_namespace="uploads",
+            device_id=device_id,
+            operation="finalize upload",
+        )
     file_obj = services.uploads.finalize(session_id, actor=principal)
     return FileObjectRead.from_domain(file_obj)
 
@@ -137,11 +185,15 @@ def cancel_upload(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> None:
-    # Fetch for owner check; cancel is idempotent-ish (404 if unknown).
-    # Never cancel blindly: an unknown/expired id must not delete another
-    # owner's chunks as a side effect. If get fails, surface 404 without
-    # touching storage.
     session = services.uploads.get(session_id)
     assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
+    if device_id is not None:
+        assert_device_ownership(
+            resource_owner=session.owner,
+            resource_namespace="uploads",
+            device_id=device_id,
+            operation="cancel upload",
+        )
     services.uploads.cancel(session_id, actor=principal)

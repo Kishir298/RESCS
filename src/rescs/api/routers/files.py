@@ -19,9 +19,13 @@ from rescs.errors import InvalidRequestError, PayloadTooLargeError
 from rescs.schemas.file_object import FileObjectCreate, FileObjectPage, FileObjectRead
 from rescs.security import (
     assert_principal_is_owner,
+    assert_device_ownership,
     enforce_owner,
+    get_device_id,
     require_api_key,
     scoped_query_owner,
+    validate_device_namespace,
+    validate_device_owner,
 )
 from rescs.services.factory import Services
 
@@ -42,6 +46,7 @@ async def upload_file(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> FileObjectRead:
     import tempfile
 
@@ -80,6 +85,11 @@ async def upload_file(
         payload.owner = enforce_owner(
             requested=owner, principal=principal, settings=settings
         )
+        payload.owner = _apply_device_scope(
+            owner=payload.owner,
+            device_id=device_id,
+            operation="upload file",
+        )
         payload.tags = normalize_tags(tags)
         if expires_at is not None:
             try:
@@ -108,6 +118,20 @@ def _sniff_mime(content_type: str | None) -> str:
     if not content_type:
         return "application/octet-stream"
     return content_type.split(";")[0].strip()
+
+
+def _apply_device_scope(
+    *,
+    owner: str | None,
+    device_id: str | None,
+    operation: str,
+) -> str | None:
+    """Apply device-scoped validation/transformation to owner."""
+    if device_id is None:
+        return owner
+    if owner is not None:
+        owner = validate_device_owner(owner, device_id, operation)
+    return owner
 
 
 def _content_disposition(filename: str | None) -> str:
@@ -141,6 +165,7 @@ def list_files(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     owner: str | None = Query(default=None),
     tags: list[str] | None = Query(default=None),
     mime_type: str | None = Query(default=None),
@@ -156,6 +181,11 @@ def list_files(
     offset: int = Query(default=0, ge=0),
 ) -> FileObjectPage:
     owner = scoped_query_owner(owner=owner, principal=principal, settings=settings)
+    owner = _apply_device_scope(
+        owner=owner,
+        device_id=device_id,
+        operation="list files",
+    )
     page = services.files.list(
         owner=owner,
         limit=limit,
@@ -185,11 +215,19 @@ def _authorized_file(
     *,
     principal: str,
     settings: Settings,
+    device_id: str | None = None,
 ) -> object:
     meta = services.files.get(file_id)
     assert_principal_is_owner(
         record_owner=meta.owner, principal=principal, settings=settings
     )
+    if device_id is not None:
+        assert_device_ownership(
+            resource_owner=meta.owner,
+            resource_namespace=meta.namespace if hasattr(meta, "namespace") else "files",
+            device_id=device_id,
+            operation="read file",
+        )
     return meta
 
 
@@ -199,11 +237,19 @@ def _authorized_file_including_deleted(
     *,
     principal: str,
     settings: Settings,
+    device_id: str | None = None,
 ) -> object:
     meta = services.files.get_including_deleted(file_id)
     assert_principal_is_owner(
         record_owner=meta.owner, principal=principal, settings=settings
     )
+    if device_id is not None:
+        assert_device_ownership(
+            resource_owner=meta.owner,
+            resource_namespace=meta.namespace if hasattr(meta, "namespace") else "files",
+            device_id=device_id,
+            operation="read file",
+        )
     return meta
 
 
@@ -213,9 +259,10 @@ def get_file_metadata(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> FileObjectRead:
     return FileObjectRead.from_domain(
-        _authorized_file(services, file_id, principal=principal, settings=settings)
+        _authorized_file(services, file_id, principal=principal, settings=settings, device_id=device_id)
     )
 
 
@@ -225,9 +272,10 @@ def download_file(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> Response:
     meta = _authorized_file(
-        services, file_id, principal=principal, settings=settings
+        services, file_id, principal=principal, settings=settings, device_id=device_id
     )
     threshold = settings.streaming_threshold_bytes or 8 * 1024 * 1024
     headers = {
@@ -255,9 +303,10 @@ def delete_file(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> None:
-    _authorized_file(services, file_id, principal=principal, settings=settings)
+    _authorized_file(services, file_id, principal=principal, settings=settings, device_id=device_id)
     services.files.delete(file_id, expected_etag=parse_etag(if_match))
 
 
@@ -267,10 +316,11 @@ def restore_file(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> FileObjectRead:
     _authorized_file_including_deleted(
-        services, file_id, principal=principal, settings=settings
+        services, file_id, principal=principal, settings=settings, device_id=device_id
     )
     return FileObjectRead.from_domain(
         services.files.restore(
@@ -285,10 +335,11 @@ def purge_file(
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> None:
     _authorized_file_including_deleted(
-        services, file_id, principal=principal, settings=settings
+        services, file_id, principal=principal, settings=settings, device_id=device_id
     )
     services.files.purge(
         file_id, actor=principal, expected_etag=parse_etag(if_match)

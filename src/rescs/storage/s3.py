@@ -79,9 +79,8 @@ class S3ObjectStore:
             session_kwargs.update(
                 {"aws_access_key_id": access_key, "aws_secret_access_key": secret_key}
             )
-        import boto3 as _boto3
 
-        self._s3 = _boto3.resource("s3", endpoint_url=endpoint or None, **session_kwargs)
+        self._s3 = boto3.resource("s3", endpoint_url=endpoint or None, **session_kwargs)
         self._bucket = self._s3.Bucket(bucket)
         self._prefix = prefix.strip("/")
 
