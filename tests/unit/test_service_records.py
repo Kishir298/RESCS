@@ -155,3 +155,42 @@ def test_limit_is_clamped(services):
     page = services.records.list(namespace="n", limit=10000, offset=-5)
     assert page.limit <= 500
     assert page.offset >= 0
+
+
+def test_create_idempotency_scoped_to_owner_namespace_key(services):
+    """RES-2: Idempotency keys scoped to (owner, namespace, key)."""
+    # Same idempotency key, different owner -> should create new record
+    # Use different keys to avoid namespace/key conflict
+    payload1 = make_create(key="k1", owner="owner1", idempotency_key="idem-1")
+    payload2 = make_create(key="k2", owner="owner2", idempotency_key="idem-1")
+    r1 = services.records.create(payload1)
+    r2 = services.records.create(payload2)
+    assert r1.id != r2.id
+    assert r1.owner == "owner1"
+    assert r2.owner == "owner2"
+
+
+def test_create_idempotency_scoped_to_namespace_key(services):
+    """RES-2: Idempotency keys scoped to (owner, namespace, key)."""
+    # Same idempotency key, same owner, different namespace -> should create new record
+    payload1 = make_create(namespace="ns1", key="k", owner="owner1", idempotency_key="idem-1")
+    payload2 = make_create(namespace="ns2", key="k", owner="owner1", idempotency_key="idem-1")
+    r1 = services.records.create(payload1)
+    r2 = services.records.create(payload2)
+    assert r1.id != r2.id
+    assert r1.namespace == "ns1"
+    assert r2.namespace == "ns2"
+
+
+def test_create_idempotency_rejects_incompatible_payload(services):
+    """RES-2: Incompatible payload reuse returns 409, not foreign data."""
+    payload1 = make_create(namespace="ns", key="k", owner="owner1", idempotency_key="idem-1", value={"v": 1})
+    r1 = services.records.create(payload1)
+    # Same idempotency key, same owner/namespace/key, different value -> 409
+    payload2 = make_create(namespace="ns", key="k", owner="owner1", idempotency_key="idem-1", value={"v": 2})
+    with pytest.raises(ConflictError) as exc:
+        services.records.create(payload2)
+    assert "idempotency key" in exc.value.message.lower()
+    # Original record unchanged
+    fetched = services.records.get(r1.id)
+    assert fetched.value == {"v": 1}

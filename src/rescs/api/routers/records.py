@@ -212,10 +212,11 @@ def _authorized_record(
     device_id: str | None = None,
 ) -> Any:
     record = services.records.get(record_id)
-    assert_principal_is_owner(
-        record_owner=record.owner, principal=principal, settings=settings
-    )
-    if device_id is not None:
+    if device_id is None:
+        assert_principal_is_owner(
+            record_owner=record.owner, principal=principal, settings=settings
+        )
+    else:
         assert_device_ownership(
             resource_owner=record.owner,
             resource_namespace=record.namespace,
@@ -234,10 +235,11 @@ def _authorized_record_including_deleted(
     device_id: str | None = None,
 ) -> Any:
     record = services.records.get_including_deleted(record_id)
-    assert_principal_is_owner(
-        record_owner=record.owner, principal=principal, settings=settings
-    )
-    if device_id is not None:
+    if device_id is None:
+        assert_principal_is_owner(
+            record_owner=record.owner, principal=principal, settings=settings
+        )
+    else:
         assert_device_ownership(
             resource_owner=record.owner,
             resource_namespace=record.namespace,
@@ -278,7 +280,7 @@ def update_record(
     )
     record = RecordRead.from_domain(
         services.records.update(
-            record_id, payload, expected_etag=parse_etag(if_match)
+            record_id, payload, expected_etag=parse_etag(if_match), device_id=device_id
         )
     )
     _apply_etag_header(response, record)
@@ -369,5 +371,5 @@ def bulk_records(
         if item.if_match is not None:
             entry["if_match"] = parse_etag(item.if_match)
         operations.append(entry)
-    results = services.records.bulk(operations, actor=principal)
+    results = services.records.bulk(operations, actor=principal, device_id=device_id)
     return BulkResponse(results=[BulkResultItem(**result) for result in results])

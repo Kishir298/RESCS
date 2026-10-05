@@ -9,7 +9,7 @@ from rescs.storage.local import LocalObjectStore
 
 
 def test_creates_base_dir(tmp_path):
-    store = LocalObjectStore(tmp_path / "nested" / "store")
+    _ = LocalObjectStore(tmp_path / "nested" / "store")
     assert (tmp_path / "nested" / "store").is_dir()
 
 

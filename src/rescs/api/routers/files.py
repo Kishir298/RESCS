@@ -19,12 +19,11 @@ from rescs.errors import InvalidRequestError, PayloadTooLargeError
 from rescs.schemas.file_object import FileObjectCreate, FileObjectPage, FileObjectRead
 from rescs.security import (
     assert_principal_is_owner,
-    assert_device_ownership,
+    assert_device_ownership_by_owner,
     enforce_owner,
     get_device_id,
     require_api_key,
     scoped_query_owner,
-    validate_device_namespace,
     validate_device_owner,
 )
 from rescs.services.factory import Services
@@ -218,13 +217,14 @@ def _authorized_file(
     device_id: str | None = None,
 ) -> object:
     meta = services.files.get(file_id)
-    assert_principal_is_owner(
-        record_owner=meta.owner, principal=principal, settings=settings
-    )
-    if device_id is not None:
-        assert_device_ownership(
+    if device_id is None:
+        assert_principal_is_owner(
+            record_owner=meta.owner, principal=principal, settings=settings
+        )
+    else:
+        # For namespace-less files, validate using owner only
+        assert_device_ownership_by_owner(
             resource_owner=meta.owner,
-            resource_namespace=meta.namespace if hasattr(meta, "namespace") else "files",
             device_id=device_id,
             operation="read file",
         )
@@ -240,13 +240,14 @@ def _authorized_file_including_deleted(
     device_id: str | None = None,
 ) -> object:
     meta = services.files.get_including_deleted(file_id)
-    assert_principal_is_owner(
-        record_owner=meta.owner, principal=principal, settings=settings
-    )
-    if device_id is not None:
-        assert_device_ownership(
+    if device_id is None:
+        assert_principal_is_owner(
+            record_owner=meta.owner, principal=principal, settings=settings
+        )
+    else:
+        # For namespace-less files, validate using owner only
+        assert_device_ownership_by_owner(
             resource_owner=meta.owner,
-            resource_namespace=meta.namespace if hasattr(meta, "namespace") else "files",
             device_id=device_id,
             operation="read file",
         )

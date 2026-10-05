@@ -18,7 +18,12 @@ from rescs.domain import utcnow
 from rescs.schemas.audit import AuditPage, AuditRead
 from rescs.schemas.file_object import FileObjectPage, FileObjectRead
 from rescs.schemas.record import RecordPage, RecordRead
-from rescs.security import require_api_key, scoped_query_owner
+from rescs.security import (
+    require_api_key,
+    scoped_query_owner,
+    validate_device_owner,
+    get_device_id,
+)
 from rescs.services.factory import Services
 
 router = APIRouter(
@@ -41,25 +46,45 @@ class CleanupResponse(BaseModel):
     uploads_cleaned: int = 0
 
 
+def _apply_device_scope(
+    *,
+    owner: str | None,
+    device_id: str | None,
+    operation: str,
+) -> str | None:
+    """Apply device-scoped validation/transformation to owner."""
+    if device_id is None:
+        return owner
+    if owner is not None:
+        owner = validate_device_owner(owner, device_id, operation)
+    return owner
+
+
 @router.post("/cleanup", response_model=CleanupResponse)
 def run_cleanup(
     payload: CleanupRequest,
     services: Services = Depends(get_services),
     settings: Settings = Depends(get_settings),
     principal: str = Depends(require_api_key),
+    device_id: str | None = Depends(get_device_id),
 ) -> CleanupResponse:
     now = utcnow()
+    # RES-5: Scope cleanup to caller's owner unless privileged global principal
+    is_privileged = settings.api_key_owner is None
+    owner = None if is_privileged else principal
+    owner = _apply_device_scope(owner=owner, device_id=device_id, operation="admin cleanup")
+    
     if payload.dry_run:
         return CleanupResponse(
             dry_run=True,
-            records_purged=services.records.count_expired(limit=payload.batch),
-            files_purged=services.files.count_expired(limit=payload.batch),
+            records_purged=services.records.count_expired(limit=payload.batch, owner=owner),
+            files_purged=services.files.count_expired(limit=payload.batch, owner=owner),
             audit_pruned=0,
-            uploads_cleaned=len(services.uploads._sessions.list_expired(now, limit=payload.batch)),
+            uploads_cleaned=len(services.uploads._sessions.list_expired(now, limit=payload.batch, owner=owner)),
         )
-    records_purged = services.records.cleanup_expired(actor=principal, limit=payload.batch)
-    files_purged = services.files.cleanup_expired(actor=principal, limit=payload.batch)
-    uploads_cleaned = services.uploads.cleanup_expired(actor=principal, limit=payload.batch)
+    records_purged = services.records.cleanup_expired(actor=principal, limit=payload.batch, owner=owner)
+    files_purged = services.files.cleanup_expired(actor=principal, limit=payload.batch, owner=owner)
+    uploads_cleaned = services.uploads.cleanup_expired(actor=principal, limit=payload.batch, owner=owner)
     audit_pruned = 0
     if settings.audit_retention_days:
         cutoff = now - timedelta(days=settings.audit_retention_days)

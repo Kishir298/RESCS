@@ -29,8 +29,11 @@ class _InMemoryStore(Generic[T]):
     def __init__(self) -> None:
         self._items: dict[str, T] = {}
         self._namespace_keys: dict[tuple[str, str], str] = {}
-        self._idempotency: dict[str, str] = {}
+        self._idempotency: dict[tuple[str, str | None, str | None, str | None], str] = {}
         self._lock = threading.RLock()
+
+    def _idempotency_tuple(self, idempotency_key: str, owner: str | None, namespace: str | None = None, key: str | None = None) -> tuple:
+        return (idempotency_key, owner, namespace, key)
 
     def create(self, item: T, namespace: str | None = None, key: str | None = None) -> T:
         with self._lock:
@@ -43,16 +46,19 @@ class _InMemoryStore(Generic[T]):
                         "item already exists for namespace/key",
                         details={"namespace": namespace, "key": key},
                     )
-            if item.idempotency_key and item.idempotency_key in self._idempotency:
-                raise ConflictError(
-                    "idempotency key already used",
-                    details={"idempotency_key": item.idempotency_key},
-                )
+            if item.idempotency_key:
+                idempotency_tuple = self._idempotency_tuple(item.idempotency_key, getattr(item, 'owner', None), namespace, key)
+                if idempotency_tuple in self._idempotency:
+                    raise ConflictError(
+                        "idempotency key already used",
+                        details={"idempotency_key": item.idempotency_key},
+                    )
             self._items[item.id] = item
             if namespace is not None and key is not None:
                 self._namespace_keys[(namespace, key)] = item.id
             if item.idempotency_key:
-                self._idempotency[item.idempotency_key] = item.id
+                idempotency_tuple = self._idempotency_tuple(item.idempotency_key, getattr(item, 'owner', None), namespace, key)
+                self._idempotency[idempotency_tuple] = item.id
             return item
 
     def update(self, item: T, namespace: str | None = None, key: str | None = None) -> T:
@@ -66,13 +72,14 @@ class _InMemoryStore(Generic[T]):
                         del self._namespace_keys[k]
                 self._namespace_keys[(namespace, key)] = item.id
             if item.idempotency_key:
-                old = self._idempotency.get(item.idempotency_key)
+                idempotency_tuple = self._idempotency_tuple(item.idempotency_key, getattr(item, 'owner', None), namespace, key)
+                old = self._idempotency.get(idempotency_tuple)
                 if old is not None and old != item.id:
                     raise ConflictError(
                         "idempotency key already used",
                         details={"idempotency_key": item.idempotency_key},
                     )
-                self._idempotency[item.idempotency_key] = item.id
+                self._idempotency[idempotency_tuple] = item.id
             return item
 
     def delete(self, item_id: str) -> None:
@@ -106,9 +113,9 @@ class _InMemoryStore(Generic[T]):
         with self._lock:
             self._namespace_keys.pop((namespace, key), None)
 
-    def find_by_idempotency_key(self, idempotency_key: str) -> T | None:
+    def find_by_idempotency_key(self, idempotency_key: str, owner: str | None = None, namespace: str | None = None, key: str | None = None) -> T | None:
         with self._lock:
-            item_id = self._idempotency.get(idempotency_key)
+            item_id = self._idempotency.get(self._idempotency_tuple(idempotency_key, owner, namespace, key))
             if item_id is None:
                 return None
             return self._items[item_id]
@@ -167,8 +174,8 @@ class InMemoryRecordRepository:
     def delete(self, record_id: str) -> None:
         self._store.delete(record_id)
 
-    def find_by_idempotency_key(self, idempotency_key: str) -> RecordData | None:
-        return self._store.find_by_idempotency_key(idempotency_key)
+    def find_by_idempotency_key(self, idempotency_key: str, owner: str | None = None, namespace: str | None = None, key: str | None = None) -> RecordData | None:
+        return self._store.find_by_idempotency_key(idempotency_key, owner, namespace, key)
 
     def list(
         self,
@@ -228,14 +235,14 @@ class InMemoryRecordRepository:
             items=items, total=self._store.count(predicate), limit=limit, offset=offset
         )
 
-    def list_expired(self, before, limit: int = 100) -> list[RecordData]:
-        now = utcnow()
+    def list_expired(self, before, limit: int = 100, owner: str | None = None) -> list[RecordData]:
         with self._store._lock:
             items = [
                 item
                 for item in self._store._items.values()
                 if item.expires_at is not None
                 and ensure_utc(item.expires_at) <= ensure_utc(before)
+                and (owner is None or item.owner == owner)
             ]
             items.sort(key=lambda i: (ensure_utc(i.expires_at), i.id))
             return items[:limit]
@@ -302,7 +309,8 @@ class InMemoryFileObjectRepository:
         return item.deleted_at is None and not item.is_expired(now)
 
     def create(self, file_object: FileObjectData) -> FileObjectData:
-        return self._store.create(file_object)
+        # For idempotency scoping, use owner as namespace and filename as key
+        return self._store.create(file_object, namespace=file_object.owner, key=file_object.filename)
 
     def get(self, file_id: str) -> FileObjectData:
         item = self._store.get(file_id)
@@ -314,13 +322,13 @@ class InMemoryFileObjectRepository:
         return self._store.get(file_id)
 
     def update(self, file_object: FileObjectData) -> FileObjectData:
-        return self._store.update(file_object)
+        return self._store.update(file_object, namespace=file_object.owner, key=file_object.filename)
 
     def delete(self, file_id: str) -> None:
         self._store.delete(file_id)
 
-    def find_by_idempotency_key(self, idempotency_key: str) -> FileObjectData | None:
-        return self._store.find_by_idempotency_key(idempotency_key)
+    def find_by_idempotency_key(self, idempotency_key: str, owner: str | None = None, namespace: str | None = None, key: str | None = None) -> FileObjectData | None:
+        return self._store.find_by_idempotency_key(idempotency_key, owner, namespace, key)
 
     def list(
         self,
@@ -380,13 +388,14 @@ class InMemoryFileObjectRepository:
             items=items, total=self._store.count(predicate), limit=limit, offset=offset
         )
 
-    def list_expired(self, before, limit: int = 100) -> list[FileObjectData]:
+    def list_expired(self, before, limit: int = 100, owner: str | None = None) -> list[FileObjectData]:
         with self._store._lock:
             items = [
                 item
                 for item in self._store._items.values()
                 if item.expires_at is not None
                 and ensure_utc(item.expires_at) <= ensure_utc(before)
+                and (owner is None or item.owner == owner)
             ]
             items.sort(key=lambda i: (ensure_utc(i.expires_at), i.id))
             return items[:limit]
@@ -500,11 +509,13 @@ class InMemoryUploadSessionRepository:
                 raise NotFoundError("upload session not found", details={"id": session_id}) from None
             del self._sessions[session_id]
 
-    def list_expired(self, before, limit: int = 100) -> list[UploadSessionData]:
+    def list_expired(self, before, limit: int = 100, owner: str | None = None) -> list[UploadSessionData]:
         moment = ensure_utc(before)
         with self._lock:
             items = [
-                s for s in self._sessions.values() if ensure_utc(s.expires_at) <= moment and s.status == "active"
+                s for s in self._sessions.values() 
+                if ensure_utc(s.expires_at) <= moment and s.status == "active"
+                and (owner is None or s.owner == owner)
             ]
             items.sort(key=lambda s: (ensure_utc(s.expires_at), s.id))
             return items[:limit]

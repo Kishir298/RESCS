@@ -79,8 +79,8 @@ def test_delete_missing_raises(memory_record_repo):
 def test_idempotency_lookup(memory_record_repo):
     record = make_record(idempotency_key="idem-1")
     memory_record_repo.create(record)
-    assert memory_record_repo.find_by_idempotency_key("idem-1").id == record.id
-    assert memory_record_repo.find_by_idempotency_key("nope") is None
+    assert memory_record_repo.find_by_idempotency_key("idem-1", owner=record.owner, namespace=record.namespace, key=record.key).id == record.id
+    assert memory_record_repo.find_by_idempotency_key("nope", owner=record.owner, namespace=record.namespace, key=record.key) is None
 
 
 def test_list_filters_and_pagination(memory_record_repo):

@@ -108,3 +108,41 @@ def test_validation_error_envelope(client: TestClient):
     error = response.json()["error"]
     assert error["code"] == "VALIDATION_ERROR"
     assert error["details"]["errors"]
+
+
+def test_patch_namespace_reserved_rejected(client: TestClient):
+    """RES-4: PATCH to reserved namespace rejected for non-system owners."""
+    # Explicitly create record with non-system owner
+    created = client.post(BASE, json=create_payload(key="k", value={"a": 1}, owner="owner1")).json()
+    assert created["owner"] == "owner1"
+    response = client.patch(f"{BASE}/{created['id']}", json={"namespace": "core.private.secret"})
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_patch_namespace_device_scope_enforced(scoped_client: TestClient):
+    """RES-4: PATCH namespace validated against device scope."""
+    from tests.conftest import SCOPED_OWNER
+    # Create record in device's namespace (owner is forced to SCOPED_OWNER)
+    # Need to provide X-Device-Id header for device scoping to apply
+    headers = {"X-Device-Id": "tenant-a"}
+    created = scoped_client.post(BASE, json=create_payload(key="k", value={"a": 1}, owner=SCOPED_OWNER), headers=headers).json()
+    assert created["namespace"].startswith("personal.device.")
+    
+    # Try to move to another device's namespace - should fail
+    response = scoped_client.patch(
+        f"{BASE}/{created['id']}", 
+        json={"namespace": "personal.device.other-device.new-ns"},
+        headers=headers
+    )
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+    
+    # Move within same device's namespace - should succeed
+    response = scoped_client.patch(
+        f"{BASE}/{created['id']}", 
+        json={"namespace": "personal.device.tenant-a.allowed-ns"},
+        headers=headers
+    )
+    assert response.status_code == 200
+    assert response.json()["namespace"] == "personal.device.tenant-a.allowed-ns"

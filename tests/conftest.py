@@ -6,6 +6,7 @@ Environment variables are set at module import time, before any
 
 from __future__ import annotations
 
+import asyncio
 import os
 
 os.environ.setdefault("RESCS_API_KEY", "test-api-key-0123456789abcdef")
@@ -15,6 +16,35 @@ os.environ.setdefault("RESCS_STORAGE_DIR", "rescs_test_storage")
 os.environ.setdefault("RESCS_LOG_LEVEL", "WARNING")
 
 import pytest
+
+# External validation markers — skipped unless env vars are set
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "requires_postgres: requires RESCS_INTEGRATION_DATABASE_URL"
+    )
+    config.addinivalue_line(
+        "markers", "requires_live_s3: requires RESCS_LIVE_S3_* credentials"
+    )
+    config.addinivalue_line(
+        "markers", "requires_endurance: requires RESCS_ENDURANCE_SECONDS"
+    )
+
+def pytest_collection_modifyitems(config, items):
+    if not os.environ.get("RESCS_INTEGRATION_DATABASE_URL"):
+        skip_postgres = pytest.mark.skip(reason="RESCS_INTEGRATION_DATABASE_URL not set")
+        for item in items:
+            if "requires_postgres" in item.keywords:
+                item.add_marker(skip_postgres)
+    if not os.environ.get("RESCS_LIVE_S3_ACCESS_KEY"):
+        skip_s3 = pytest.mark.skip(reason="RESCS_LIVE_S3_* credentials not set")
+        for item in items:
+            if "requires_live_s3" in item.keywords:
+                item.add_marker(skip_s3)
+    if not os.environ.get("RESCS_ENDURANCE_SECONDS"):
+        skip_endurance = pytest.mark.skip(reason="RESCS_ENDURANCE_SECONDS not set")
+        for item in items:
+            if "requires_endurance" in item.keywords:
+                item.add_marker(skip_endurance)
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -33,13 +63,38 @@ from rescs.repositories.sqlalchemy_ import (
 )
 
 
+class LifespanManager:
+    """Manages the FastAPI lifespan for tests."""
+    
+    def __init__(self, app):
+        self.app = app
+        self.lifespan_cm = None
+        self.lifespan = None
+    
+    async def start(self):
+        self.lifespan_cm = self.app.router.lifespan_context(self.app)
+        self.lifespan = await self.lifespan_cm.__aenter__()
+    
+    async def stop(self):
+        if self.lifespan_cm:
+            await self.lifespan_cm.__aexit__(None, None, None)
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an event loop for the test session."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+
 @pytest.fixture(scope="session")
 def settings() -> Settings:
     return Settings(_env_file=None)
 
 
-@pytest.fixture()
-def app(settings: Settings):
+@pytest.fixture(scope="session")
+async def app(settings: Settings):
     # Use memory storage backend for test isolation
     test_settings = Settings(
         _env_file=None,
@@ -72,7 +127,12 @@ def app(settings: Settings):
         rate_limit_writes_per_minute=settings.rate_limit_writes_per_minute,
         rate_limit_uploads_per_minute=settings.rate_limit_uploads_per_minute,
     )
-    return create_app(settings=test_settings)
+    app = create_app(settings=test_settings)
+    # Start lifespan and keep it running for the entire test session
+    app.state.lifespan_manager = LifespanManager(app)
+    await app.state.lifespan_manager.start()
+    yield app
+    await app.state.lifespan_manager.stop()
 
 
 @pytest.fixture()
@@ -87,8 +147,8 @@ SCOPED_API_KEY = "scoped-tenant-key-0123456789abcdef"
 SCOPED_OWNER = "tenant-a"
 
 
-@pytest.fixture()
-def scoped_app(settings: Settings):
+@pytest.fixture(scope="session")
+async def scoped_app(settings: Settings):
     scoped_settings = Settings(
         _env_file=None,
         api_key=SCOPED_API_KEY,
@@ -98,7 +158,11 @@ def scoped_app(settings: Settings):
         storage_backend="memory",
         environment="test",
     )
-    return create_app(settings=scoped_settings)
+    app = create_app(settings=scoped_settings)
+    app.state.lifespan_manager = LifespanManager(app)
+    await app.state.lifespan_manager.start()
+    yield app
+    await app.state.lifespan_manager.stop()
 
 
 @pytest.fixture()

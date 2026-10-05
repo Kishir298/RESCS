@@ -68,8 +68,12 @@ class UploadService:
 
     def _check_owner_locked(self, resource_owner: str) -> None:
         from rescs.errors import ForbiddenError
+        from rescs.device_auth import DEVICE_NAMESPACE_PREFIX
 
         locked = self._settings.api_key_owner if self._settings else ""
+        # Skip check for device-scoped owners (authorization handled at API layer)
+        if resource_owner.startswith(DEVICE_NAMESPACE_PREFIX):
+            return
         if locked and resource_owner != locked:
             raise ForbiddenError(
                 f"this resource belongs to owner {resource_owner!r}",
@@ -279,102 +283,83 @@ class UploadService:
                         details={"id": session_id, "status": current.status},
                     )
                 session = self._sessions.get(session_id)
-                # Pre-validate contiguous layout via sizes only (no byte buffering).
-                layout: list[tuple[str, int]] = []
-                offset = 0
-                while offset < session.total_size:
-                    key = _chunk_key(session.id, offset)
-                    if not self._store.exists(key):
-                        raise InvalidRequestError("missing chunk; upload incomplete", details={"offset": offset})
-                    size = self._store.size(key)
-                    if size <= 0 or offset + size > session.total_size:
-                        raise InvalidRequestError("chunk exceeds declared size", details={"offset": offset})
-                    layout.append((key, size))
-                    offset += size
-                if offset != session.total_size:
-                    raise InvalidRequestError(
-                        "incomplete upload", details={"received": offset, "total": session.total_size}
-                    )
-                # Governance before any blob write (no quota bypass via uploads).
-                self._check_finalize_governance(session.owner, session.total_size, session.metadata)
-                # Stream chunks -> hash incrementally -> object-store streaming write.
-                digest = hashlib.sha256()
 
-                def _stream() -> Iterator[bytes]:
-                    for key, _size in layout:
-                        for piece in self._store.get_stream(key):
-                            if piece:
-                                digest.update(piece)
-                                yield piece
+                # Helper to roll back session to active on any failure
+                def _rollback_session() -> None:
+                    try:
+                        s = self._sessions.get(session_id)
+                        s.status = "active"
+                        s.updated_at = utcnow()
+                        self._sessions.update(s)
+                    except Exception:
+                        pass
 
-                file_id = str(uuid.uuid4())
                 try:
-                    self._store.put_stream(file_id, _stream())
-                except Exception:
+                    # Pre-validate contiguous layout via sizes only (no byte buffering).
+                    layout: list[tuple[str, int]] = []
+                    offset = 0
+                    while offset < session.total_size:
+                        key = _chunk_key(session.id, offset)
+                        if not self._store.exists(key):
+                            raise InvalidRequestError("missing chunk; upload incomplete", details={"offset": offset})
+                        size = self._store.size(key)
+                        if size <= 0 or offset + size > session.total_size:
+                            raise InvalidRequestError("chunk exceeds declared size", details={"offset": offset})
+                        layout.append((key, size))
+                        offset += size
+                    if offset != session.total_size:
+                        raise InvalidRequestError(
+                            "incomplete upload", details={"received": offset, "total": session.total_size}
+                        )
+                    # Governance before any blob write (no quota bypass via uploads).
+                    self._check_finalize_governance(session.owner, session.total_size, session.metadata)
+                    # Stream chunks -> hash incrementally -> object-store streaming write.
+                    digest = hashlib.sha256()
+
+                    def _stream() -> Iterator[bytes]:
+                        for key, _size in layout:
+                            for piece in self._store.get_stream(key):
+                                if piece:
+                                    digest.update(piece)
+                                    yield piece
+
+                    file_id = str(uuid.uuid4())
                     try:
-                        self._store.delete(file_id)
+                        self._store.put_stream(file_id, _stream())
                     except Exception:
-                        pass
-                    raise
-                hex_digest = digest.hexdigest()
-                if session.checksum and session.checksum.lower() != hex_digest.lower():
-                    try:
-                        self._store.delete(file_id)
-                    except Exception:
-                        pass
-                    # Leave session active so the client can inspect/retry or cancel.
-                    session.status = "active"
-                    session.updated_at = utcnow()
-                    try:
-                        self._sessions.update(session)
-                    except NotFoundError:
-                        pass
-                    raise InvalidRequestError("checksum mismatch", details={"expected": session.checksum, "actual": hex_digest})
-                now = utcnow()
-                file_obj = FileObjectData(
-                    id=file_id,
-                    filename=session.filename,
-                    mime_type=session.content_type,
-                    size=session.total_size,
-                    storage_path=file_id,
-                    sha256=hex_digest,
-                    metadata=dict(session.metadata),
-                    owner=session.owner,
-                    version=1,
-                    etag=file_etag(hex_digest, session.total_size),
-                    created_at=now,
-                    updated_at=now,
-                    tags=list(session.tags),
-                )
-                try:
-                    created = self._files.create(file_obj)
-                except Exception:
-                    try:
-                        self._store.delete(file_id)
-                    except Exception:
-                        pass
-                    session.status = "active"
-                    session.updated_at = utcnow()
-                    try:
-                        self._sessions.update(session)
-                    except NotFoundError:
-                        pass
-                    raise
-                # Post-write race guard (mirrors FileService): loser rolls back.
-                settings = self._settings
-                if settings is not None and (
-                    settings.max_files_per_owner or settings.max_bytes_per_owner
-                ):
-                    over = False
-                    if settings.max_files_per_owner and self._files.count_by_owner(session.owner) > settings.max_files_per_owner:
-                        over = True
-                    if not over and settings.max_bytes_per_owner and self._files.bytes_by_owner(session.owner) > settings.max_bytes_per_owner:
-                        over = True
-                    if over:
                         try:
-                            self._files.delete(created.id)
+                            self._store.delete(file_id)
                         except Exception:
                             pass
+                        raise
+                    hex_digest = digest.hexdigest()
+                    if session.checksum and session.checksum.lower() != hex_digest.lower():
+                        try:
+                            self._store.delete(file_id)
+                        except Exception:
+                            pass
+                        # Roll back session to active on checksum mismatch
+                        _rollback_session()
+                        raise InvalidRequestError("checksum mismatch", details={"expected": session.checksum, "actual": hex_digest})
+                    now = utcnow()
+                    file_obj = FileObjectData(
+                        id=file_id,
+                        filename=session.filename,
+                        mime_type=session.content_type,
+                        size=session.total_size,
+                        storage_path=file_id,
+                        sha256=hex_digest,
+                        metadata=dict(session.metadata),
+                        owner=session.owner,
+                        version=1,
+                        etag=file_etag(hex_digest, session.total_size),
+                        created_at=now,
+                        updated_at=now,
+                        tags=list(session.tags),
+                    )
+                    try:
+                        created = self._files.create(file_obj)
+                    except Exception:
                         try:
                             self._store.delete(file_id)
                         except Exception:
@@ -385,24 +370,54 @@ class UploadService:
                             self._sessions.update(session)
                         except NotFoundError:
                             pass
-                        raise QuotaExceededError(
-                            f"owner {session.owner!r} exceeded storage quota",
-                            details={"owner": session.owner},
-                        )
-                session.status = "finalized"
-                session.received_bytes = session.total_size
-                session.updated_at = utcnow()
-                try:
-                    self._sessions.update(session)
-                except NotFoundError:
-                    pass
-                self._cleanup_chunks(session.id, session.total_size)
-                try:
-                    self._sessions.delete(session.id)
-                except NotFoundError:
-                    pass
-                self._audited("upload.finalize", session_id, session.owner)
-                return created
+                        raise
+                    # Post-write race guard (mirrors FileService): loser rolls back.
+                    settings = self._settings
+                    if settings is not None and (
+                        settings.max_files_per_owner or settings.max_bytes_per_owner
+                    ):
+                        over = False
+                        if settings.max_files_per_owner and self._files.count_by_owner(session.owner) > settings.max_files_per_owner:
+                            over = True
+                        if not over and settings.max_bytes_per_owner and self._files.bytes_by_owner(session.owner) > settings.max_bytes_per_owner:
+                            over = True
+                        if over:
+                            try:
+                                self._files.delete(created.id)
+                            except Exception:
+                                pass
+                            try:
+                                self._store.delete(file_id)
+                            except Exception:
+                                pass
+                            session.status = "active"
+                            session.updated_at = utcnow()
+                            try:
+                                self._sessions.update(session)
+                            except NotFoundError:
+                                pass
+                            raise QuotaExceededError(
+                                f"owner {session.owner!r} exceeded storage quota",
+                                details={"owner": session.owner},
+                            )
+                    session.status = "finalized"
+                    session.received_bytes = session.total_size
+                    session.updated_at = utcnow()
+                    try:
+                        self._sessions.update(session)
+                    except NotFoundError:
+                        pass
+                    self._cleanup_chunks(session.id, session.total_size)
+                    try:
+                        self._sessions.delete(session.id)
+                    except NotFoundError:
+                        pass
+                    self._audited("upload.finalize", session_id, session.owner)
+                    return created
+                except Exception:
+                    # Roll back session to active on any failure
+                    _rollback_session()
+                    raise
             except Exception as exc:
                 owner = actor
                 try:
@@ -493,8 +508,8 @@ class UploadService:
             return None
         return None
 
-    def cleanup_expired(self, *, actor: str = "system", limit: int = 500) -> int:
-        expired = self._sessions.list_expired(utcnow(), limit=limit)
+    def cleanup_expired(self, *, actor: str = "system", limit: int = 500, owner: str | None = None) -> int:
+        expired = self._sessions.list_expired(utcnow(), limit=limit, owner=owner)
         count = 0
         for session in expired:
             try:

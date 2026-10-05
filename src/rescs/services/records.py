@@ -28,13 +28,19 @@ from rescs.domain import (
 )
 from rescs.errors import (
     ConflictError,
+    ForbiddenError,
     InvalidRequestError,
     NotFoundError,
     PayloadTooLargeError,
     PreconditionFailedError,
     QuotaExceededError,
     RESCSError,
+    UnauthorizedError,
 )
+from rescs.device_auth import assert_device_ownership
+
+# Reserved namespace prefixes that cannot be accessed by devices
+RESERVED_NAMESPACE_PREFIXES = ("core.", "rescs.", "asis.", "tiviss.")
 from rescs.etag import content_etag
 from rescs.interfaces.repository import RecordRepository
 from rescs.schemas.record import RecordCreate, RecordUpdate
@@ -162,7 +168,13 @@ class RecordService:
             self._check_metadata_size(payload.metadata)
             expires_at = self._resolve_expiry(payload.expires_at, payload.ttl_seconds)
             if payload.idempotency_key is not None:
-                existing = self._repo.find_by_idempotency_key(payload.idempotency_key)
+                # RES-2: Scope idempotency key lookup to (owner, namespace, key)
+                existing = self._repo.find_by_idempotency_key(
+                    payload.idempotency_key,
+                    owner=payload.owner,
+                    namespace=payload.namespace,
+                    key=payload.key,
+                )
                 if existing is not None:
                     if existing.deleted_at is not None:
                         raise ConflictError(
@@ -173,6 +185,15 @@ class RecordService:
                     if existing.is_expired():
                         self._repo.delete(existing.id)
                     else:
+                        # RES-2: Reject incompatible payload reuse
+                        if (existing.value != payload.value or
+                            existing.metadata != payload.metadata or
+                            existing.tags != tags or
+                            existing.expires_at != expires_at):
+                            raise ConflictError(
+                                "idempotency key already used with different payload",
+                                details={"idempotency_key": payload.idempotency_key},
+                            )
                         return existing
             self._reclaim_expired_occupant(payload.namespace, payload.key)
             self._check_quota(payload.owner)
@@ -228,7 +249,21 @@ class RecordService:
                         "record does not exist; cannot match If-Match",
                         details={"namespace": payload.namespace, "key": payload.key},
                     )
+                # RES-1: Check for deleted/expired occupant and authorize before create
+                occupant = self._repo.find_occupant(payload.namespace, payload.key)
+                if occupant is not None:
+                    if occupant.owner != payload.owner:
+                        raise ForbiddenError(
+                            f"cannot put record owned by {occupant.owner!r}",
+                            details={"owner": occupant.owner, "requested_owner": payload.owner},
+                        )
                 return self.create(payload, actor=actor)
+            # RES-1: Authorize the existing object before PUT
+            if existing.owner != payload.owner:
+                raise ForbiddenError(
+                    f"cannot put record owned by {existing.owner!r}",
+                    details={"owner": existing.owner, "requested_owner": payload.owner},
+                )
             _check_etag(existing, expected_etag)
             tags = normalize_tags(payload.tags)
             validate_tags(tags)
@@ -240,7 +275,7 @@ class RecordService:
                 key=payload.key,
                 value=payload.value,
                 metadata=payload.metadata,
-                owner=payload.owner,
+                owner=existing.owner,  # Preserve original owner
                 version=existing.version + 1,
                 idempotency_key=existing.idempotency_key or payload.idempotency_key,
                 etag=content_etag(payload.value, payload.metadata, tags),
@@ -272,6 +307,7 @@ class RecordService:
         *,
         actor: str = "system",
         expected_etag: str | None = None,
+        device_id: str | None = None,
     ) -> RecordData:
         try:
             existing = self._repo.get(record_id)
@@ -300,10 +336,30 @@ class RecordService:
                 )
             else:
                 expires_at = existing.expires_at
+            
+            # RES-4: Validate prospective namespace if being changed
+            new_namespace = payload.namespace if payload.namespace is not None else existing.namespace
+            new_key = payload.key if payload.key is not None else existing.key
+            if new_namespace != existing.namespace or new_key != existing.key:
+                # Check if new namespace is reserved (allow system-owned records)
+                is_system_record = existing.owner == "system"
+                for prefix in RESERVED_NAMESPACE_PREFIXES:
+                    if new_namespace.startswith(prefix) and not is_system_record:
+                        raise UnauthorizedError(
+                            f"cannot move record to reserved namespace '{new_namespace}'",
+                            details={"namespace": new_namespace},
+                        )
+                # Validate device scope if device_id provided
+                if device_id is not None:
+                    from rescs.device_auth import validate_device_namespace
+                    new_namespace = validate_device_namespace(
+                        new_namespace, device_id, operation="update record namespace"
+                    )
+            
             updated = RecordData(
                 id=existing.id,
-                namespace=payload.namespace if payload.namespace is not None else existing.namespace,
-                key=payload.key if payload.key is not None else existing.key,
+                namespace=new_namespace,
+                key=new_key,
                 value=value,
                 metadata=metadata,
                 owner=existing.owner,
@@ -386,6 +442,8 @@ class RecordService:
                         "occupant_id": occupant.id,
                     },
                 )
+            # RES-8: Recheck quotas during restoration with race-safe postconditions
+            self._check_quota(existing.owner)
             restored = RecordData(
                 id=existing.id,
                 namespace=existing.namespace,
@@ -404,6 +462,19 @@ class RecordService:
                 deleted_by=None,
             )
             result = self._repo.update(restored)
+            # Post-write race guard: two concurrent restores may both pass the
+            # pre-check; the loser rolls back so quotas stay race-safe.
+            if self._settings is not None and self._settings.max_records_per_owner:
+                count = self._repo.count_by_owner(existing.owner)
+                if count > self._settings.max_records_per_owner:
+                    try:
+                        self._repo.delete(result.id)
+                    except Exception:
+                        pass
+                    raise QuotaExceededError(
+                        f"owner {existing.owner!r} reached the record limit",
+                        details={"owner": existing.owner, "count": count, "max": self._settings.max_records_per_owner},
+                    )
             self._audited("record.restore", result)
             return result
         except Exception as exc:
@@ -505,7 +576,7 @@ class RecordService:
     # -- bulk ------------------------------------------------------------------
 
     def bulk(
-        self, operations: list[dict[str, Any]], *, actor: str = "system"
+        self, operations: list[dict[str, Any]], *, actor: str = "system", device_id: str | None = None
     ) -> list[dict[str, Any]]:
         """Apply a bounded batch of per-item operations with explicit statuses.
 
@@ -535,7 +606,14 @@ class RecordService:
                     results.append({"index": index, "status": "put", "id": record.id})
                 elif op == "delete":
                     target = self._repo.get(operation["id"])
-                    self._check_bulk_owner(target.owner)
+                    # RES-3: Apply per-object device authorization check
+                    if device_id is not None:
+                        assert_device_ownership(
+                            resource_owner=target.owner,
+                            resource_namespace=target.namespace,
+                            device_id=device_id,
+                            operation="bulk delete record",
+                        )
                     self.delete(
                         operation["id"],
                         actor=actor,
@@ -544,7 +622,14 @@ class RecordService:
                     results.append({"index": index, "status": "deleted", "id": operation["id"]})
                 elif op == "restore":
                     target = self._repo.get_including_deleted(operation["id"])
-                    self._check_bulk_owner(target.owner)
+                    # RES-3: Apply per-object device authorization check
+                    if device_id is not None:
+                        assert_device_ownership(
+                            resource_owner=target.owner,
+                            resource_namespace=target.namespace,
+                            device_id=device_id,
+                            operation="bulk restore record",
+                        )
                     record = self.restore(
                         operation["id"],
                         actor=actor,
@@ -553,7 +638,14 @@ class RecordService:
                     results.append({"index": index, "status": "restored", "id": record.id})
                 elif op == "purge":
                     target = self._repo.get_including_deleted(operation["id"])
-                    self._check_bulk_owner(target.owner)
+                    # RES-3: Apply per-object device authorization check
+                    if device_id is not None:
+                        assert_device_ownership(
+                            resource_owner=target.owner,
+                            resource_namespace=target.namespace,
+                            device_id=device_id,
+                            operation="bulk purge record",
+                        )
                     self.purge(
                         operation["id"],
                         actor=actor,
@@ -600,14 +692,19 @@ class RecordService:
 
     # -- expiry cleanup ----------------------------------------------------------
 
-    def count_expired(self, *, limit: int = 500) -> int:
+    def count_expired(self, *, limit: int = 500, owner: str | None = None) -> int:
         """Number of expired records awaiting cleanup (bounded preview)."""
-        return len(self._repo.list_expired(utcnow(), limit=limit))
+        return len(self._repo.list_expired(utcnow(), limit=limit, owner=owner))
 
-    def cleanup_expired(self, *, actor: str = "system", limit: int = 500) -> int:
-        """Purge expired records; returns the number purged."""
+    def cleanup_expired(self, *, actor: str = "system", limit: int = 500, owner: str | None = None) -> int:
+        """Purge expired records; returns the number purged.
+
+        RES-5: Cleanup must respect owner/device scope. By default, only purges
+        expired records owned by the actor. Pass owner=None with explicit
+        privileged context to purge globally.
+        """
         now = utcnow()
-        expired = self._repo.list_expired(now, limit=limit)
+        expired = self._repo.list_expired(now, limit=limit, owner=owner)
         purged = 0
         for item in expired:
             try:

@@ -154,13 +154,16 @@ class SQLAlchemyRecordRepository:
                 raise NotFoundError("record not found", details={"id": record_id})
             session.delete(row)
 
-    def find_by_idempotency_key(self, idempotency_key: str) -> RecordData | None:
+    def find_by_idempotency_key(self, idempotency_key: str, owner: str | None = None, namespace: str | None = None, key: str | None = None) -> RecordData | None:
         with session_scope(self._session_factory, "find record by idempotency key") as session:
-            row = (
-                session.query(Record)
-                .filter(Record.idempotency_key == idempotency_key)
-                .first()
-            )
+            query = session.query(Record).filter(Record.idempotency_key == idempotency_key)
+            if owner is not None:
+                query = query.filter(Record.owner == owner)
+            if namespace is not None:
+                query = query.filter(Record.namespace == namespace)
+            if key is not None:
+                query = query.filter(Record.key == key)
+            row = query.first()
             return row.to_domain() if row is not None else None
 
     def list(
@@ -232,15 +235,16 @@ class SQLAlchemyRecordRepository:
             items = [row.to_domain() for row in rows]
             return Page(items=items, total=total, limit=limit, offset=offset)
 
-    def list_expired(self, before: datetime, limit: int = 100) -> list[RecordData]:
+    def list_expired(self, before: datetime, limit: int = 100, owner: str | None = None) -> list[RecordData]:
         with session_scope(self._session_factory, "list expired records") as session:
+            query = session.query(Record).filter(
+                Record.expires_at.is_not(None),
+                Record.expires_at <= ensure_utc(before),
+            )
+            if owner is not None:
+                query = query.filter(Record.owner == owner)
             rows = (
-                session.query(Record)
-                .filter(
-                    Record.expires_at.is_not(None),
-                    Record.expires_at <= ensure_utc(before),
-                )
-                .order_by(Record.expires_at.asc(), Record.id.asc())
+                query.order_by(Record.expires_at.asc(), Record.id.asc())
                 .limit(limit)
                 .all()
             )
@@ -382,13 +386,14 @@ class SQLAlchemyFileObjectRepository:
                 raise NotFoundError("file not found", details={"id": file_id})
             session.delete(row)
 
-    def find_by_idempotency_key(self, idempotency_key: str) -> FileObjectData | None:
+    def find_by_idempotency_key(self, idempotency_key: str, owner: str | None = None, namespace: str | None = None, key: str | None = None) -> FileObjectData | None:
         with session_scope(self._session_factory, "find file by idempotency key") as session:
-            row = (
-                session.query(FileObject)
-                .filter(FileObject.idempotency_key == idempotency_key)
-                .first()
-            )
+            query = session.query(FileObject).filter(FileObject.idempotency_key == idempotency_key)
+            if owner is not None:
+                query = query.filter(FileObject.owner == owner)
+            # Note: FileObject model doesn't have namespace/key columns.
+            # Idempotency scoping for files is handled at the service layer via payload comparison.
+            row = query.first()
             return row.to_domain() if row is not None else None
 
     def list(
@@ -458,15 +463,16 @@ class SQLAlchemyFileObjectRepository:
             items = [row.to_domain() for row in rows]
             return Page(items=items, total=total, limit=limit, offset=offset)
 
-    def list_expired(self, before: datetime, limit: int = 100) -> list[FileObjectData]:
+    def list_expired(self, before: datetime, limit: int = 100, owner: str | None = None) -> list[FileObjectData]:
         with session_scope(self._session_factory, "list expired files") as session:
+            query = session.query(FileObject).filter(
+                FileObject.expires_at.is_not(None),
+                FileObject.expires_at <= ensure_utc(before),
+            )
+            if owner is not None:
+                query = query.filter(FileObject.owner == owner)
             rows = (
-                session.query(FileObject)
-                .filter(
-                    FileObject.expires_at.is_not(None),
-                    FileObject.expires_at <= ensure_utc(before),
-                )
-                .order_by(FileObject.expires_at.asc(), FileObject.id.asc())
+                query.order_by(FileObject.expires_at.asc(), FileObject.id.asc())
                 .limit(limit)
                 .all()
             )
@@ -606,13 +612,16 @@ class SQLAlchemyUploadSessionRepository:
                 raise NotFoundError("upload session not found", details={"id": session_id})
             session.delete(row)
 
-    def list_expired(self, before: datetime, limit: int = 100) -> list[UploadSessionData]:
+    def list_expired(self, before: datetime, limit: int = 100, owner: str | None = None) -> list[UploadSessionData]:
         with session_scope(self._session_factory, "list expired uploads") as session:
+            query = session.query(UploadSession).filter(
+                UploadSession.expires_at <= ensure_utc(before),
+                UploadSession.status == "active",
+            )
+            if owner is not None:
+                query = query.filter(UploadSession.owner == owner)
             rows = (
-                session.query(UploadSession)
-                .filter(UploadSession.expires_at <= ensure_utc(before))
-                .filter(UploadSession.status == "active")
-                .order_by(UploadSession.expires_at.asc(), UploadSession.id.asc())
+                query.order_by(UploadSession.expires_at.asc(), UploadSession.id.asc())
                 .limit(limit)
                 .all()
             )

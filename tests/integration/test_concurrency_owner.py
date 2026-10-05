@@ -142,19 +142,25 @@ def test_record_idempotent_replay_returns_same_resource(client: TestClient):
     assert listed["total"] == 1
 
 
-def test_record_idempotency_key_wins_over_payload_difference(client: TestClient):
+def test_record_idempotency_key_rejects_payload_difference(client: TestClient):
+    """RES-2: Incompatible payload reuse returns 409."""
     base = {
         "namespace": "idem",
         "key": "order-2",
         "value": {"item": "pen"},
         "idempotency_key": "order-456-retry-1",
     }
-    first = client.post(RECORDS, json=base).json()
+    first = client.post(RECORDS, json=base)
+    assert first.status_code == 201
+    first_id = first.json()["id"]
     replay = client.post(
         RECORDS, json={**base, "value": {"item": "DIFFERENT"}}
-    ).json()
-    assert replay["id"] == first["id"]
-    assert replay["value"] == {"item": "pen"}
+    )
+    assert replay.status_code == 409
+    assert replay.json()["error"]["code"] == "CONFLICT"
+    # Original record unchanged
+    current = client.get(f"{RECORDS}/{first_id}").json()
+    assert current["value"] == {"item": "pen"}
 
 
 def test_file_idempotency_at_service_boundary(client: TestClient):

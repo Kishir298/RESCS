@@ -9,12 +9,11 @@ from rescs.config import Settings
 from rescs.schemas.file_object import FileObjectRead
 from rescs.schemas.upload import UploadCreate, UploadRead
 from rescs.security import (
-    assert_device_ownership,
+    assert_device_ownership_by_owner,
     assert_principal_is_owner,
     enforce_owner,
     get_device_id,
     require_api_key,
-    validate_device_namespace,
     validate_device_owner,
 )
 from rescs.services.factory import Services
@@ -73,11 +72,11 @@ def get_upload(
     device_id: str | None = Depends(get_device_id),
 ) -> UploadRead:
     session = services.uploads.get(session_id)
-    assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
-    if device_id is not None:
-        assert_device_ownership(
+    if device_id is None:
+        assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
+    else:
+        assert_device_ownership_by_owner(
             resource_owner=session.owner,
-            resource_namespace="uploads",
             device_id=device_id,
             operation="read upload",
         )
@@ -97,11 +96,11 @@ async def put_chunk(
 ) -> UploadRead:
     # Owner check before reading body.
     session = services.uploads.get(session_id)
-    assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
-    if device_id is not None:
-        assert_device_ownership(
+    if device_id is None:
+        assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
+    else:
+        assert_device_ownership_by_owner(
             resource_owner=session.owner,
-            resource_namespace="uploads",
             device_id=device_id,
             operation="upload chunk",
         )
@@ -167,11 +166,11 @@ def finalize_upload(
     device_id: str | None = Depends(get_device_id),
 ) -> FileObjectRead:
     session = services.uploads.get(session_id)
-    assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
-    if device_id is not None:
-        assert_device_ownership(
+    if device_id is None:
+        assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
+    else:
+        assert_device_ownership_by_owner(
             resource_owner=session.owner,
-            resource_namespace="uploads",
             device_id=device_id,
             operation="finalize upload",
         )
@@ -188,11 +187,11 @@ def cancel_upload(
     device_id: str | None = Depends(get_device_id),
 ) -> None:
     session = services.uploads.get(session_id)
-    assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
-    if device_id is not None:
-        assert_device_ownership(
+    if device_id is None:
+        assert_principal_is_owner(record_owner=session.owner, principal=principal, settings=settings)
+    else:
+        assert_device_ownership_by_owner(
             resource_owner=session.owner,
-            resource_namespace="uploads",
             device_id=device_id,
             operation="cancel upload",
         )
