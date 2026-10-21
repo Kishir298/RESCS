@@ -19,8 +19,8 @@ from rescs.schemas.record import (
     RecordUpdate,
 )
 from rescs.security import (
-    assert_principal_is_owner,
     assert_device_ownership,
+    assert_principal_is_owner,
     enforce_owner,
     get_device_id,
     require_api_key,

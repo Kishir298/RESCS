@@ -18,13 +18,12 @@ from rescs.domain import normalize_tags
 from rescs.errors import InvalidRequestError, PayloadTooLargeError
 from rescs.schemas.file_object import FileObjectCreate, FileObjectPage, FileObjectRead
 from rescs.security import (
-    assert_principal_is_owner,
     assert_device_ownership,
+    assert_principal_is_owner,
     enforce_owner,
     get_device_id,
     require_api_key,
     scoped_query_owner,
-    validate_device_namespace,
     validate_device_owner,
 )
 from rescs.services.factory import Services

@@ -14,7 +14,6 @@ from rescs.security import (
     enforce_owner,
     get_device_id,
     require_api_key,
-    validate_device_namespace,
     validate_device_owner,
 )
 from rescs.services.factory import Services
