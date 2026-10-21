@@ -1,0 +1,53 @@
+--- a/core/web/storage.py
++++ b/core/web/storage.py
+@@ -48,13 +48,19 @@
+         if not re.fullmatch(r"[a-z0-9_-]{1,32}", service): raise ValueError("Invalid service scope.")
+         return "core.profile." + user_id, "personal.profile." + user_id + "." + service
+ 
+-    def records(self, user_id, service="workspace"):
++    def records(self, user_id, service="workspace", *, limit=100, offset=0):
++        if type(limit) is not int or type(offset) is not int or not 1 <= limit <= 500 or offset < 0:
++            raise ValueError("Invalid records pagination.")
+         owner, namespace = self.scope(user_id, service)
+-        page = self.request("GET", "/api/v1/records", params={"owner": owner, "namespace": namespace, "limit": 100})
++        page = self.request("GET", "/api/v1/records", params={"owner": owner, "namespace": namespace, "limit": limit, "offset": offset})
+         if not isinstance(page, dict) or not isinstance(page.get("items"), list):
+             raise ConnectionError("Invalid RESCS collection contract.")
++        if (any(type(page.get(k)) is not int for k in ("total", "limit", "offset"))
++                or page["total"] < 0 or page["limit"] != limit or page["offset"] != offset
++                or len(page["items"]) > limit):
++            raise ConnectionError("Invalid RESCS pagination contract.")
+         # Fail closed if a backend ignores either owner or namespace filtering.
+-        if any(x.get("owner") != owner or x.get("namespace") != namespace for x in page["items"]):
++        if any(not isinstance(x, dict) or x.get("owner") != owner or x.get("namespace") != namespace for x in page["items"]):
+             raise PermissionError("RESCS returned data outside this profile.")
+         return page
+ 
+@@ -62,4 +68,7 @@
+         if not isinstance(key, str) or not 1 <= len(key) <= 200 or not isinstance(value, dict):
+             raise ValueError("A record key and JSON object are required.")
+         owner, namespace = self.scope(user_id, service)
+-        return self.request("PUT", "/api/v1/records", body={"owner": owner, "namespace": namespace, "key": key, "value": value})
++        saved = self.request("PUT", "/api/v1/records", body={"owner": owner, "namespace": namespace, "key": key, "value": value})
++        if not isinstance(saved, dict) or saved.get("owner") != owner or saved.get("namespace") != namespace or saved.get("key") != key:
++            raise PermissionError("RESCS returned a saved record outside this profile/key.")
++        return saved
+--- a/core/web/gateway.py
++++ b/core/web/gateway.py
+@@ -102,12 +102,15 @@
+             return 200, {"host_running": bool(self.app and self.app.is_running), "web": "online",
+                          "storage": "RESCS", "storage_owner": self.storage.scope(user["id"])[0]}, None
+         if route == "/api/records":
+-            if method == "GET": return 200, self.storage.records(user["id"], query.get("service", ["workspace"])[0]), None
++            if method == "GET": return 200, self.storage.records(user["id"], query.get("service", ["workspace"])[0],
++                limit=int(query.get("limit", ["100"])[0]), offset=int(query.get("offset", ["0"])[0])), None
+             if method == "POST":
+                 saved = self.storage.save(user["id"], body.get("key"), body.get("value"), body.get("service", "workspace"))
+                 self.accounts.audit(user["id"], "record_saved")
+                 return 200, saved, None
+         if route == "/api/jobs" and method == "POST":
++            if body.get("service") == "rescs" and self.storage.endpoint != "http://127.0.0.1:8081":
++                raise ValueError("Managed RESCS uses http://127.0.0.1:8081. Keep the configured backend running independently or explicitly change Settings before managed startup.")
+             result = self.services.start(body.get("service"), user, body.get("prompt", ""), body.get("mode", "plan"))
+             self.accounts.audit(user["id"], "service_requested", {"service": body.get("service"), "job": result["id"]})
+             return 202, result, None
