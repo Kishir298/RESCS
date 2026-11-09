@@ -169,3 +169,4 @@ def test_health_and_request_id_at_app_level(client: TestClient):
     generated = client.get("/health/live", headers={"X-Request-ID": "x" * 200})
     assert generated.status_code == 200
     assert generated.headers.get("X-Request-ID") != "x" * 200
+

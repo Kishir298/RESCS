@@ -15,7 +15,7 @@ class SchemaManager:
     Alembic on top of this foundation.
     """
 
-    SCHEMA_VERSION = "0.3.1"
+    SCHEMA_VERSION = "0.3.0"
 
     # v0.2 additive columns (records + file_objects). All nullable or
     # defaulted so existing rows migrate without data loss.
@@ -42,7 +42,6 @@ class SchemaManager:
                 self._upgrade_postgres()
         else:
             Base.metadata.create_all(self._engine)
-        self._upgrade_owner_index()
         with self._engine.begin() as connection:
             connection.execute(
                 text(
@@ -139,18 +138,3 @@ class SchemaManager:
                     " WHERE deleted_at IS NULL"
                 )
             )
-
-    def _upgrade_owner_index(self) -> None:
-        """Replace the legacy global key index without changing stored rows.
-
-        Stop writers and back up before migration. SQLite/PostgreSQL only.
-        Creating the new index first keeps uniqueness enforced throughout.
-        """
-        if self._engine.dialect.name not in {"sqlite", "postgresql"}:
-            raise RuntimeError("Owner-key migration supports SQLite and PostgreSQL only")
-        with self._engine.begin() as connection:
-            connection.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_records_live_owner_namespace_key "
-                "ON records (owner, namespace, key) WHERE deleted_at IS NULL"
-            ))
-            connection.execute(text("DROP INDEX IF EXISTS uq_records_live_namespace_key"))

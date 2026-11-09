@@ -183,15 +183,11 @@ class FileService:
                 payload.expires_at, getattr(payload, "ttl_seconds", None)
             )
             if payload.idempotency_key is not None:
-                # RES-2: Scope idempotency key lookup to (owner, namespace, key)
-                # Files use owner as namespace and filename as key for idempotency scoping
-                existing = self._repo.find_by_idempotency_key(
-                    payload.idempotency_key,
-                    owner=payload.owner,
-                    namespace=payload.owner,
-                    key=payload.filename,
-                )
+                existing = self._repo.find_by_idempotency_key(payload.idempotency_key)
                 if existing is not None:
+                    if existing.owner != payload.owner:
+                        from rescs.errors import ForbiddenError
+                        raise ForbiddenError("idempotency owner mismatch", details={})
                     if existing.deleted_at is not None:
                         raise ConflictError(
                             "idempotency key belongs to a deleted file;"
@@ -201,16 +197,6 @@ class FileService:
                     if existing.is_expired():
                         self._purge_row(existing)
                     else:
-                        # RES-2: Reject incompatible payload reuse
-                        if (existing.filename != payload.filename or
-                            existing.mime_type != payload.mime_type or
-                            existing.metadata != payload.metadata or
-                            existing.tags != tags or
-                            existing.expires_at != expires_at):
-                            raise ConflictError(
-                                "idempotency key already used with different payload",
-                                details={"idempotency_key": payload.idempotency_key},
-                            )
                         return existing
             self._check_governance(payload.owner, len(data), payload.metadata)
 
@@ -274,15 +260,11 @@ class FileService:
                 payload.expires_at, getattr(payload, "ttl_seconds", None)
             )
             if payload.idempotency_key is not None:
-                # RES-2: Scope idempotency key lookup to (owner, namespace, key)
-                # Files use owner as namespace and filename as key for idempotency scoping
-                existing = self._repo.find_by_idempotency_key(
-                    payload.idempotency_key,
-                    owner=payload.owner,
-                    namespace=payload.owner,
-                    key=payload.filename,
-                )
+                existing = self._repo.find_by_idempotency_key(payload.idempotency_key)
                 if existing is not None:
+                    if existing.owner != payload.owner:
+                        from rescs.errors import ForbiddenError
+                        raise ForbiddenError("idempotency owner mismatch", details={})
                     if existing.deleted_at is not None:
                         raise ConflictError(
                             "idempotency key belongs to a deleted file;"
@@ -292,16 +274,6 @@ class FileService:
                     if existing.is_expired():
                         self._purge_row(existing)
                     else:
-                        # RES-2: Reject incompatible payload reuse
-                        if (existing.filename != payload.filename or
-                            existing.mime_type != payload.mime_type or
-                            existing.metadata != payload.metadata or
-                            existing.tags != tags or
-                            existing.expires_at != expires_at):
-                            raise ConflictError(
-                                "idempotency key already used with different payload",
-                                details={"idempotency_key": payload.idempotency_key},
-                            )
                         # Drain caller's iterator to keep connection state sane.
                         for _ in chunks:
                             pass
@@ -511,8 +483,6 @@ class FileService:
                     "cannot restore file; stored bytes are missing",
                     details={"id": file_id},
                 )
-            # RES-8: Recheck quotas during restoration with race-safe postconditions
-            self._check_governance(existing.owner, existing.size, existing.metadata)
             restored = FileObjectData(
                 id=existing.id,
                 filename=existing.filename,
@@ -533,9 +503,6 @@ class FileService:
                 deleted_by=None,
             )
             result = self._repo.update(restored)
-            # Post-write race guard: two concurrent restores may both pass the
-            # pre-check; the loser rolls back so quotas stay race-safe.
-            self._enforce_post_write_quota(existing.owner, result.id)
             self._audited("file.restore", result)
             return result
         except Exception as exc:
@@ -626,13 +593,13 @@ class FileService:
         limit, offset = clamp_pagination(limit, offset)
         return self._repo.list_deleted(owner=owner, limit=limit, offset=offset)
 
-    def count_expired(self, *, limit: int = 500, owner: str | None = None) -> int:
+    def count_expired(self, *, limit: int = 500) -> int:
         """Number of expired files awaiting cleanup (bounded preview)."""
-        return len(self._repo.list_expired(utcnow(), limit=limit, owner=owner))
+        return len(self._repo.list_expired(utcnow(), limit=limit))
 
-    def cleanup_expired(self, *, actor: str = "system", limit: int = 500, owner: str | None = None) -> int:
+    def cleanup_expired(self, *, actor: str = "system", limit: int = 500) -> int:
         """Purge expired files (metadata + blob); returns the number purged."""
-        expired = self._repo.list_expired(utcnow(), limit=limit, owner=owner)
+        expired = self._repo.list_expired(utcnow(), limit=limit)
         purged = 0
         for item in expired:
             try:
@@ -643,3 +610,4 @@ class FileService:
         if self._audit is not None:
             self._audit.log("file.cleanup", resource_type="file", owner=actor)
         return purged
+

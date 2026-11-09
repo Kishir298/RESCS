@@ -32,3 +32,4 @@ class AuditPage(BaseModel):
     total: int
     limit: int
     offset: int
+

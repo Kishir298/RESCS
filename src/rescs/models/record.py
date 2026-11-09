@@ -19,8 +19,7 @@ class Record(Base):
         # index support fall back to a plain unique index; the service layer
         # additionally guards live-key collisions at the application level.
         Index(
-            "uq_records_live_owner_namespace_key",
-            "owner",
+            "uq_records_live_namespace_key",
             "namespace",
             "key",
             unique=True,

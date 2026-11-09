@@ -90,15 +90,3 @@ v0.3 adds `upload_sessions` table (resumable uploads) + indexes `ix_records_owne
 Never put credentials in code. Use environment variables (e.g.
 `RESCS_DATABASE_URL=postgresql+psycopg://...`) or the git-ignored `.env`
 file. See `.env.example` for the reference template.
-
-
-## Schema 0.3.1: owner-scoped natural keys
-
-Back up and stop writers first. Migration creates
-`uq_records_live_owner_namespace_key(owner, namespace, key)` with
-`WHERE deleted_at IS NULL`, then removes `uq_records_live_namespace_key`.
-This changes no row values. Existing v0.1/v0.2 migration steps still run when needed.
-SQLite and PostgreSQL are supported; PostgreSQL migration was not executed in
-this release environment. Rollback uses a pre-upgrade database/blob backup;
-older lookup code is unsafe once two owners share the same namespace/key.
-See `RESCS-CORE-Integration-Handoff.md` for migration and recovery commands.

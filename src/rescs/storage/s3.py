@@ -80,14 +80,7 @@ class S3ObjectStore:
                 {"aws_access_key_id": access_key, "aws_secret_access_key": secret_key}
             )
 
-        from botocore.config import Config
-
-        self._s3 = boto3.resource(
-            "s3", endpoint_url=endpoint or None,
-            config=Config(connect_timeout=5, read_timeout=10,
-                          retries={"max_attempts": 1, "mode": "standard"}),
-            **session_kwargs,
-        )
+        self._s3 = boto3.resource("s3", endpoint_url=endpoint or None, **session_kwargs)
         self._bucket = self._s3.Bucket(bucket)
         self._prefix = prefix.strip("/")
 
@@ -109,11 +102,8 @@ class S3ObjectStore:
         try:
             self._bucket.Object(self._key(object_id)).load()
             return True
-        except Exception as exc:
-            code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
-            if code in {"404", "NoSuchKey", "NotFound"}:
-                return False
-            raise StorageError("s3 availability check failed", details={"object_id": object_id}) from exc
+        except Exception:
+            return False
 
     def put_stream(self, object_id: str, chunks: Iterable[bytes]) -> None:
         import tempfile

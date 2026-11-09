@@ -84,3 +84,4 @@ def test_pg_dump_invocation_hides_password():
     argv2, env2 = _pg_dump_invocation("postgresql://u@db/app")
     assert argv2[1] == "postgresql://u@db/app"
     assert env2 is None
+

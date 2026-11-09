@@ -180,3 +180,4 @@ def test_scoped_owner_cannot_restore_others(scoped_client: TestClient):
     assert rejected.status_code == 401
     # Own tombstone restores fine under the lock.
     assert scoped_client.post(f"{RECORDS}/{created['id']}/restore").status_code == 200
+

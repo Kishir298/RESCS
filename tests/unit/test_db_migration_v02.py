@@ -119,7 +119,7 @@ def test_fresh_database_gets_v02_schema(tmp_path):
             indexes = connection.execute(
                 text("SELECT name, sql FROM sqlite_master WHERE type='index'")
             ).all()
-            partial = [sql for name, sql in indexes if name == "uq_records_live_owner_namespace_key"]
+            partial = [sql for name, sql in indexes if name == "uq_records_live_namespace_key"]
             assert partial and "WHERE" in partial[0].upper()
     finally:
         engine.dispose()

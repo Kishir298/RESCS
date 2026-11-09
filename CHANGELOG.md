@@ -1,20 +1,14 @@
-# 0.3.1 — 2026-10-21
-
-- Add installed `rescs` command, stable standalone storage paths and private first-run configuration.
-- Add setup/doctor, explicit remote binding and offline-first local launch without CORE.
-- Migrate record uniqueness and natural-key lookups to include owner; preserve existing rows.
-- Enforce key-owner locks alongside device headers and report S3 outages clearly with bounded timeouts.
-- Add regression tests, cross-platform CI configuration, installed-command smoke script and integration handoff.
-- Supply separate CORE-HOST pagination/scope/startup patches; no CORE-CLIENT change required.
-- Validation limits are recorded in docs/RESCS-Release-Validation.md; no deployment or GitHub write claimed.
-
 # Changelog
 
 All notable changes to R.E.S.C.S. are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-06
+
+### Added
+
+- Raspberry Pi storage foundation: signed CORE owner scope (`X-RESCS-Signature`), required `/srv/core` mount guard, systemd unit/installer and real CORE loopback validation; see `docs/RESCS-Pi-Handoff.md`
 
 ### Fixed
 

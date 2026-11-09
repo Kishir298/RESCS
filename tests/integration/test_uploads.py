@@ -294,3 +294,4 @@ def test_concurrent_finalize_single_winner(client: TestClient):
     # fail loudly (404 already-finalized / 409 conflict), never 200 twice.
     assert results.count(200) == 1
     assert all(code in (404, 409) for code in results if code != 200)
+

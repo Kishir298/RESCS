@@ -37,3 +37,4 @@ Produces atomically (staging dir + rename) `db.dump`, `blobs/` (recursive, dotfi
 Backup DB and blobs as close together as possible. Orphan blobs (no metadata) are harmless; missing blobs surface as `500 STORAGE_ERROR` with expected/actual SHA and never as false success. `POST /api/v1/admin/cleanup` after restore reclaims expired leftovers.
 
 Live S3 versioning + PITR + real restore drill remain **external validation**.
+

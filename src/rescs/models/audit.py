@@ -54,3 +54,4 @@ class AuditEvent(Base):
             outcome=data.outcome,
             error_code=data.error_code,
         )
+

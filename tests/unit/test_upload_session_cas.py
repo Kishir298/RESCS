@@ -61,3 +61,4 @@ def test_memory_cas_concurrent_single_winner():
     assert results.count(False) == 7
     assert repo.get(created.id).status == "finalizing"
     assert ConflictError is not None and NotFoundError is not None
+

@@ -71,3 +71,4 @@ def test_quota_race_safe_single_winner(tmp_path):
             ids.append(r.status_code)
         assert ids.count(201) == 2
         assert 403 in ids
+

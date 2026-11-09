@@ -113,3 +113,4 @@ def test_filters_respect_owner_scope(client: TestClient):
     only_a = client.get(f"{RECORDS}?namespace=tgo&tags=x&owner=owner-A").json()
     assert only_a["total"] == 1
     assert only_a["items"][0]["owner"] == "owner-A"
+

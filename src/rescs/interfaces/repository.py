@@ -23,10 +23,10 @@ class RecordRepository(Protocol):
     def get_including_deleted(self, record_id: str) -> RecordData: ...
     """Return the record regardless of deletion/expiry state."""
 
-    def get_by_namespace_key(self, namespace: str, key: str, owner: str | None = None) -> RecordData | None: ...
+    def get_by_namespace_key(self, namespace: str, key: str) -> RecordData | None: ...
     """Return the live, non-expired occupant of (namespace, key), if any."""
 
-    def find_occupant(self, namespace: str, key: str, owner: str | None = None) -> RecordData | None: ...
+    def find_occupant(self, namespace: str, key: str) -> RecordData | None: ...
     """Return any occupant of (namespace, key), including deleted/expired."""
 
     def update(self, record: RecordData) -> RecordData: ...
@@ -34,13 +34,7 @@ class RecordRepository(Protocol):
     def delete(self, record_id: str) -> None: ...
     """Hard delete (purge)."""
 
-    def find_by_idempotency_key(
-        self,
-        idempotency_key: str,
-        owner: str | None = None,
-        namespace: str | None = None,
-        key: str | None = None,
-    ) -> RecordData | None: ...
+    def find_by_idempotency_key(self, idempotency_key: str) -> RecordData | None: ...
 
     def list(
         self,
@@ -67,7 +61,7 @@ class RecordRepository(Protocol):
     ) -> Page[RecordData]: ...
 
     def list_expired(
-        self, before: datetime, limit: int = 100, owner: str | None = None
+        self, before: datetime, limit: int = 100
     ) -> list[RecordData]: ...
 
     def search(
@@ -102,13 +96,7 @@ class FileObjectRepository(Protocol):
     def delete(self, file_id: str) -> None: ...
     """Hard delete (purge)."""
 
-    def find_by_idempotency_key(
-        self,
-        idempotency_key: str,
-        owner: str | None = None,
-        namespace: str | None = None,
-        key: str | None = None,
-    ) -> FileObjectData | None: ...
+    def find_by_idempotency_key(self, idempotency_key: str) -> FileObjectData | None: ...
 
     def list(
         self,
@@ -135,7 +123,7 @@ class FileObjectRepository(Protocol):
     ) -> Page[FileObjectData]: ...
 
     def list_expired(
-        self, before: datetime, limit: int = 100, owner: str | None = None
+        self, before: datetime, limit: int = 100
     ) -> list[FileObjectData]: ...
 
     def count_by_owner(
@@ -181,4 +169,4 @@ class UploadSessionRepository(Protocol):
 
     def delete(self, session_id: str) -> None: ...
 
-    def list_expired(self, before: datetime, limit: int = 100, owner: str | None = None) -> list[UploadSessionData]: ...
+    def list_expired(self, before: datetime, limit: int = 100) -> list[UploadSessionData]: ...

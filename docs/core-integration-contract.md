@@ -17,7 +17,7 @@ below — HTTP + the envelope + the reserved namespaces.
 
 ## Transport
 
-- Local loopback HTTP requires no internet or Wi-Fi. Remote deployment uses HTTPS.
+- Base URL is the deployed R.E.S.C.S. instance over HTTPS.
 - Every API call requires `X-API-Key: <RESCS_API_KEY>` (min 16 chars).
   Missing/invalid keys get `401 {"error":{"code":"UNAUTHORIZED",...}}`.
 - Resources always live under `/api/v1`. Interactive schema: `/docs`.
@@ -128,19 +128,3 @@ schema and migration story. R.E.S.C.S. touches **only** its own tables
 (`records`, `file_objects`, `audit_events`, `schema_info`) and is configured
 with its own `DATABASE_URL`. The API above is the supported integration path;
 direct cross-schema queries are out of contract.
-
-
-## Browser-profile gateway boundary (0.3.1)
-
-The command-release CORE portal uses `core.profile.PROFILE_UUID` owners and
-`personal.profile.PROFILE_UUID.SERVICE` namespaces, derived from authenticated
-sessions on the server. With `RESCS_API_KEY_OWNER` empty, the service key is
-privileged and may select any owner. API-key possession is not per-profile
-authorization: browsers and devices must never receive that credential.
-A nonempty key-owner locks the API to one owner and is unsuitable for the
-portal's multi-profile managed backend. Device headers cannot override that lock.
-See `RESCS-CORE-Integration-Handoff.md` for exact startup and setup commands.
-
-The portal implements records; RESCS file APIs do not imply browser file uploads.
-Natural record keys are owner-scoped in schema 0.3.1. The existing SQL record
-idempotency token constraint remains global: choose globally unique retry tokens.

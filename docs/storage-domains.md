@@ -54,3 +54,4 @@ implementation stays an implementation detail.
 - TIVISS: `tiviss/integrations/rescs_http.py` (namespace-guarded client).
 - ASIS: `asis/storage/domains.py` (DomainRouter) + `asis/storage/migrate.py`.
 - Cross-domain reads are rejected client-side unless explicitly authorized.
+

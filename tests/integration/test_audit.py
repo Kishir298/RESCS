@@ -116,3 +116,4 @@ def test_audit_retention_prune(client: TestClient):
     pruned = services.audit.prune_before(cutoff)
     assert pruned >= 1
     assert client.get(AUDIT).json()["total"] == 0
+

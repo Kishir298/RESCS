@@ -18,8 +18,8 @@ from rescs.domain import normalize_tags
 from rescs.errors import InvalidRequestError, PayloadTooLargeError
 from rescs.schemas.file_object import FileObjectCreate, FileObjectPage, FileObjectRead
 from rescs.security import (
+    assert_device_ownership,
     assert_principal_is_owner,
-    assert_device_ownership_by_owner,
     enforce_owner,
     get_device_id,
     require_api_key,
@@ -89,7 +89,6 @@ async def upload_file(
             device_id=device_id,
             operation="upload file",
         )
-        payload.owner = enforce_owner(requested=payload.owner, principal=principal, settings=settings)
         payload.tags = normalize_tags(tags)
         if expires_at is not None:
             try:
@@ -186,7 +185,6 @@ def list_files(
         device_id=device_id,
         operation="list files",
     )
-    owner = scoped_query_owner(owner=owner, principal=principal, settings=settings)
     page = services.files.list(
         owner=owner,
         limit=limit,
@@ -223,9 +221,9 @@ def _authorized_file(
         record_owner=meta.owner, principal=principal, settings=settings
     )
     if device_id is not None:
-        # For namespace-less files, validate using owner only
-        assert_device_ownership_by_owner(
+        assert_device_ownership(
             resource_owner=meta.owner,
+            resource_namespace=meta.namespace if hasattr(meta, "namespace") else "files",
             device_id=device_id,
             operation="read file",
         )
@@ -245,9 +243,9 @@ def _authorized_file_including_deleted(
         record_owner=meta.owner, principal=principal, settings=settings
     )
     if device_id is not None:
-        # For namespace-less files, validate using owner only
-        assert_device_ownership_by_owner(
+        assert_device_ownership(
             resource_owner=meta.owner,
+            resource_namespace=meta.namespace if hasattr(meta, "namespace") else "files",
             device_id=device_id,
             operation="read file",
         )

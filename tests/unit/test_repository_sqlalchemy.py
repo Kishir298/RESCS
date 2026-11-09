@@ -111,3 +111,4 @@ def test_search_wildcard_query_matches_exact_total(sqlalchemy_record_repo):
     page = sqlalchemy_record_repo.search("100%-off_sale")
     assert page.total == 1
     assert [item.key for item in page.items] == ["100%-off_sale"]
+

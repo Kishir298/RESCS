@@ -83,3 +83,4 @@ def test_non_http_scope_passes_through():
 
     asyncio.run(pump())
     assert marker["called"] is True
+

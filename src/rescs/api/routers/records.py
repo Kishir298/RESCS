@@ -19,8 +19,8 @@ from rescs.schemas.record import (
     RecordUpdate,
 )
 from rescs.security import (
-    assert_principal_is_owner,
     assert_device_ownership,
+    assert_principal_is_owner,
     enforce_owner,
     get_device_id,
     require_api_key,
@@ -127,7 +127,6 @@ def create_record(
         device_id=device_id,
         operation="create record",
     )
-    payload.owner = enforce_owner(requested=payload.owner, principal=principal, settings=settings)
     record = RecordRead.from_domain(services.records.create(payload))
     _apply_etag_header(response, record)
     return record
@@ -152,7 +151,6 @@ def put_record(
         device_id=device_id,
         operation="put record",
     )
-    payload.owner = enforce_owner(requested=payload.owner, principal=principal, settings=settings)
     record = RecordRead.from_domain(
         services.records.put(payload, expected_etag=parse_etag(if_match))
     )
@@ -187,7 +185,6 @@ def list_records(
         device_id=device_id,
         operation="list records",
     )
-    owner = scoped_query_owner(owner=owner, principal=principal, settings=settings)
     return _page(
         services,
         namespace=namespace,
@@ -281,7 +278,7 @@ def update_record(
     )
     record = RecordRead.from_domain(
         services.records.update(
-            record_id, payload, expected_etag=parse_etag(if_match), device_id=device_id
+            record_id, payload, expected_etag=parse_etag(if_match)
         )
     )
     _apply_etag_header(response, record)
@@ -368,10 +365,9 @@ def bulk_records(
                 device_id=device_id,
                 operation="bulk record",
             )
-            record_payload.owner = enforce_owner(requested=record_payload.owner, principal=principal, settings=settings)
             entry["record"] = record_payload.model_dump()
         if item.if_match is not None:
             entry["if_match"] = parse_etag(item.if_match)
         operations.append(entry)
-    results = services.records.bulk(operations, actor=principal, device_id=device_id)
+    results = services.records.bulk(operations, actor=principal)
     return BulkResponse(results=[BulkResultItem(**result) for result in results])

@@ -71,3 +71,4 @@ class UploadSession(Base):
             meta=dict(data.metadata or {}),
             tags=list(data.tags or []),
         )
+

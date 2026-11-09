@@ -60,3 +60,4 @@ def test_live_s3_roundtrip():
         except Exception:
             pass
     assert not store.exists(key)
+

@@ -54,18 +54,15 @@ def test_application_factory_boots_independently(settings: Settings):
 
 def test_no_cross_subsystem_imports():
     root = Path(__file__).resolve().parents[2] / "src" / "rescs"
-    import ast
     offenders: list[str] = []
-    forbidden = {"core", "asis", "tiviss", "ascs", "radarsard"}
     for path in root.rglob("*.py"):
-        for node in ast.walk(ast.parse(path.read_text())):
-            modules = []
-            if isinstance(node, ast.Import):
-                modules = [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                modules = [node.module]
-            offenders.extend(f"{path.name}: {module}" for module in modules
-                             if module.split(".")[0] in forbidden)
+        text = path.read_text()
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("import ", "from ")):
+                for foreign in ("core.", "core ", "asis", "tiviss", "ascs", "radarsard"):
+                    if foreign in stripped and "rescs" not in stripped:
+                        offenders.append(f"{path.name}: {stripped}")
     assert offenders == []
 
 

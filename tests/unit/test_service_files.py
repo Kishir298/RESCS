@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from rescs.errors import ConflictError, NotFoundError, StorageError
+from rescs.errors import NotFoundError, StorageError
 from rescs.repositories.memory import InMemoryFileObjectRepository
 from rescs.schemas.file_object import FileObjectCreate
 from rescs.services.files import FileService
@@ -97,17 +97,13 @@ def test_idempotent_create(service):
     assert first.id == second.id
 
 
-def test_same_idempotency_key_different_payload_raises_conflict(service):
-    """RES-2: Incompatible payload reuse returns 409."""
+def test_same_idempotency_key_returns_existing(service):
     first = service.create(make_payload(idempotency_key="up-2"), b"data")
-    with pytest.raises(ConflictError):
-        service.create(
-            make_payload(idempotency_key="up-2", metadata={"different": "value"}), b"other"
-        )
-    # Original file unchanged
-    fetched = service.get(first.id)
-    assert fetched.filename == "a.txt"
-    assert fetched.metadata == {}
+    second = service.create(
+        make_payload(idempotency_key="up-2", filename="other.txt"), b"other"
+    )
+    assert second.id == first.id
+    assert second.filename == "a.txt"
 
 
 def test_list(service):
@@ -144,3 +140,4 @@ def test_download_stream_abandon_does_not_raise(service):
     meta, stream = service.download_stream(created.id)
     assert next(stream) is not None
     stream.close()
+

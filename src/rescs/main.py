@@ -41,6 +41,8 @@ def create_app(
             settings.version,
             settings.environment,
         )
+        from rescs.mounts import check_mount
+        check_mount(settings)
         database: Database = bootstrap_database(settings)
         services: Services = build_services(
             database=database,
@@ -83,6 +85,8 @@ def create_app(
         settings=settings,
     )
 
+    from rescs.gateway_scope import ScopeMiddleware
+    app.add_middleware(ScopeMiddleware, settings=settings)
     register_exception_handlers(app)
 
     @app.get("/", tags=["meta"])
