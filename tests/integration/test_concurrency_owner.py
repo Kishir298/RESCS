@@ -236,3 +236,4 @@ def test_service_boundary_enforces_ownership(scoped_client: TestClient):
         enforce_owner(requested=SCOPED_OWNER, principal=SCOPED_OWNER, settings=settings)
         == SCOPED_OWNER
     )
+

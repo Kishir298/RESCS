@@ -49,3 +49,4 @@ class UploadRead(BaseModel):
     @classmethod
     def from_domain(cls, data: UploadSessionData) -> UploadRead:
         return cls(**data.to_dict())
+

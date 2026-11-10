@@ -123,3 +123,4 @@ def test_fresh_database_gets_v02_schema(tmp_path):
             assert partial and "WHERE" in partial[0].upper()
     finally:
         engine.dispose()
+

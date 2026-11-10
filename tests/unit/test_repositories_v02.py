@@ -140,3 +140,4 @@ def test_etag_stable_without_tags_and_sorted_with_tags():
     assert content_etag({"a": 1}, {}) == content_etag({"a": 1}, {})
     assert content_etag({"a": 1}, {}, ["x", "y"]) == content_etag({"a": 1}, {}, ["y", "x"])
     assert content_etag({"a": 1}, {}) != content_etag({"a": 1}, {}, ["x"])
+

@@ -141,3 +141,4 @@ def test_cleanup_requires_auth(settings):
     with TestClient(app) as anon:
         assert anon.post(CLEANUP, json={}).status_code == 401
         assert anon.get("/api/v1/admin/audit").status_code == 401
+

@@ -14,3 +14,4 @@ RESCS_RATE_LIMIT_UPLOADS_PER_MINUTE=20
 - `/health/*` and `/` never limited; tests run with limiter off.
 - **Single-instance in-memory sliding window.** Multi-instance prod needs a shared
   backend (Redis) — document as external work, do not rely on this limiter alone.
+

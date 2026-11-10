@@ -53,3 +53,4 @@ and safe logging.
 | --- | --- | --- |
 | `RESCS_REQUEST_ID_HEADER` | `X-Request-ID` | response/request correlation header |
 | `RESCS_LOG_LEVEL` | `INFO` | `DEBUG\|INFO\|WARNING\|ERROR\|CRITICAL` |
+

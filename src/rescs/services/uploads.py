@@ -69,7 +69,8 @@ class UploadService:
     def _check_owner_locked(self, resource_owner: str) -> None:
         from rescs.errors import ForbiddenError
 
-        locked = self._settings.api_key_owner if self._settings else ""
+        from rescs.gateway_scope import current_owner
+        locked = current_owner.get() or (self._settings.api_key_owner if self._settings else "")
         if locked and resource_owner != locked:
             raise ForbiddenError(
                 f"this resource belongs to owner {resource_owner!r}",
@@ -506,3 +507,4 @@ class UploadService:
         if self._audit is not None:
             self._audit.log("upload.cleanup", resource_type="upload", owner=actor)
         return count
+

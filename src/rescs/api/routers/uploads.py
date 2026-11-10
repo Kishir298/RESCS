@@ -196,3 +196,4 @@ def cancel_upload(
             operation="cancel upload",
         )
     services.uploads.cancel(session_id, actor=principal)
+

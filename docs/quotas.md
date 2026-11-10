@@ -70,3 +70,4 @@ Locked mode: when `RESCS_API_KEY_OWNER` is set, every request is scoped to
 that single owner (writes claiming another `owner` are `401`, reads of
 another owner's resource are `403`); quotas then apply to the locked owner
 only.
+

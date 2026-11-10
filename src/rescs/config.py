@@ -35,6 +35,8 @@ class Settings(BaseSettings):
 
     api_key: str = ""
     api_key_owner: str = ""
+    require_signed_owner: bool = False
+    required_mount: str = ""
     database_url: str = "sqlite:///rescs_dev.db"
     storage_dir: str = "rescs_storage"
     auto_create_schema: bool = True

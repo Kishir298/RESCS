@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 
 def get_settings(request: Request) -> Settings:
-    return request.app.state.settings
+    return getattr(request.state, "scoped_settings", request.app.state.settings)
 
 
 def get_services(request: Request) -> Services:

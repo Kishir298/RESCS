@@ -78,3 +78,4 @@ GET /api/v1/admin/audit?owner=&operation=&since=&limit=&offset=
 
 Owner scoping applies. Retention: admin cleanup prunes events older than
 `RESCS_AUDIT_RETENTION_DAYS` (`0` = keep forever).
+

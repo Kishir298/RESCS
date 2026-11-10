@@ -229,7 +229,7 @@ class InMemoryRecordRepository:
         )
 
     def list_expired(self, before, limit: int = 100) -> list[RecordData]:
-        now = utcnow()
+        utcnow()
         with self._store._lock:
             items = [
                 item

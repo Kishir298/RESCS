@@ -140,3 +140,4 @@ def test_download_stream_abandon_does_not_raise(service):
     meta, stream = service.download_stream(created.id)
     assert next(stream) is not None
     stream.close()
+

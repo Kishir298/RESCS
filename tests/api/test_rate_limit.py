@@ -72,3 +72,4 @@ def test_rate_limit_map_bounded_on_new_keys():
         for i in range(MAX_TRACKED_KEYS + 50):
             client.get("/api/v1/records", headers={"X-API-Key": f"key-{i:06d}"})
         assert len(middleware._hits) <= MAX_TRACKED_KEYS
+

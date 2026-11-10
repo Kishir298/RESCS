@@ -49,3 +49,4 @@ def test_build_object_store_s3_missing_bucket_message_names_var():
     with pytest.raises(ConfigurationError) as excinfo:
         build_object_store(s)
     assert "RESCS_S3_BUCKET" in str(excinfo.value)
+

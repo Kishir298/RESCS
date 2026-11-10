@@ -129,3 +129,4 @@ def test_bounded_endurance_no_corruption(client: TestClient):
     # State left behind is still coherent.
     assert client.get(f"{RECORDS}/{created_id}").status_code == 200
     assert client.get("/health/ready").json()["status"] == "ready"
+

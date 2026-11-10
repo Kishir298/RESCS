@@ -25,6 +25,14 @@ class LocalObjectStore:
         self._base = Path(base_dir)
         self._base.mkdir(parents=True, exist_ok=True)
 
+    def _sync_directory(self):
+        if os.name != "nt":
+            fd = os.open(self._base, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+
     def _resolve(self, object_id: str) -> Path:
         if not _SAFE_ID.match(object_id):
             raise StorageError(
@@ -45,8 +53,12 @@ class LocalObjectStore:
         temp: Path | None = None
         try:
             temp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
-            temp.write_bytes(data)
+            with open(temp, "wb") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(temp, target)
+            self._sync_directory()
         except OSError as exc:
             if temp is not None:
                 try:
@@ -101,7 +113,10 @@ class LocalObjectStore:
                 for chunk in chunks:
                     if chunk:
                         handle.write(chunk)
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(temp, target)
+            self._sync_directory()
         except OSError as exc:
             temp.unlink(missing_ok=True)
             raise StorageError(

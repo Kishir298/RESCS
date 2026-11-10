@@ -158,3 +158,4 @@ def test_failed_consistency_no_orphan_metadata(client: TestClient):
     assert response.json()["error"]["code"] == "STORAGE_ERROR"
     # Metadata still reports the expected digest (evidence, not a lie).
     assert client.get(f"{FILES}/{file_id}").json()["sha256"] == created["sha256"]
+

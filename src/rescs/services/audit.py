@@ -71,3 +71,4 @@ class AuditService:
 
     def prune_before(self, cutoff) -> int:
         return self._repo.prune_before(cutoff)
+

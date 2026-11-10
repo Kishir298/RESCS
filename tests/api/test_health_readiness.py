@@ -157,3 +157,4 @@ def test_unhandled_exception_returns_safe_envelope_with_request_id(settings):
     assert "hunter2" not in text
     assert "traceback" not in text
     assert response.headers.get("X-Request-ID") == "boom-1"
+

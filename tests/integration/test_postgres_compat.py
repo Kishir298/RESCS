@@ -89,3 +89,4 @@ def test_postgres_record_crud_smoke():
         assert files.object_store is not None
     finally:
         database.engine.dispose()
+

@@ -146,7 +146,8 @@ class RecordService:
         """Enforce single-owner lock inside bulk batches (per-item 403)."""
         from rescs.errors import ForbiddenError
 
-        locked = self._settings.api_key_owner if self._settings else ""
+        from rescs.gateway_scope import current_owner
+        locked = current_owner.get() or (self._settings.api_key_owner if self._settings else "")
         if locked and resource_owner != locked:
             raise ForbiddenError(
                 f"this resource belongs to owner {resource_owner!r}",
@@ -164,6 +165,10 @@ class RecordService:
             if payload.idempotency_key is not None:
                 existing = self._repo.find_by_idempotency_key(payload.idempotency_key)
                 if existing is not None:
+                    self._check_bulk_owner(existing.owner)
+                    if existing.owner != payload.owner:
+                        from rescs.errors import ForbiddenError
+                        raise ForbiddenError("idempotency owner mismatch", details={})
                     if existing.deleted_at is not None:
                         raise ConflictError(
                             "idempotency key belongs to a deleted record;"
@@ -222,6 +227,10 @@ class RecordService:
         """Create or replace the record identified by (namespace, key)."""
         try:
             existing = self._repo.get_by_namespace_key(payload.namespace, payload.key)
+            self._check_bulk_owner(payload.owner)
+            if existing is not None and existing.owner != payload.owner:
+                from rescs.errors import ForbiddenError
+                raise ForbiddenError("record owner mismatch", details={})
             if existing is None:
                 if expected_etag is not None:
                     raise PreconditionFailedError(
@@ -622,3 +631,4 @@ class RecordService:
                 owner=actor,
             )
         return purged
+

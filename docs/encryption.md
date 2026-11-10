@@ -19,3 +19,4 @@ Owned by infrastructure: KMS key rotation per provider docs. RESCS has no key fi
 No per-record envelope encryption. If compliance later requires it, use a vetted
 AEAD (e.g. XChaCha20-Poly1305 via `cryptography`) with KMS-wrapped DEKs — out of
 scope for v0.2/v0.3 and marked as future work.
+

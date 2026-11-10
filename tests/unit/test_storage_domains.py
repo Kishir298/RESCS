@@ -36,3 +36,4 @@ def test_domain_search_stays_in_namespace(sqlalchemy_record_repo):
     sqlalchemy_record_repo.create(_record("tiviss.memory", "k2", {"v": "alpha"}))
     page = sqlalchemy_record_repo.search("alpha", namespace="asis.memory")
     assert {item.key for item in page.items} == {"k1"}
+

@@ -111,3 +111,4 @@ def test_files_survive_restart_with_integrity(tmp_path: Path):
         assert download.headers["x-file-sha256"] == digest
         assert download.headers["x-file-size"] == str(len(data))
         assert download.headers["etag"]
+

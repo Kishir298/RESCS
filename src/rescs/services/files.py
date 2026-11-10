@@ -185,6 +185,9 @@ class FileService:
             if payload.idempotency_key is not None:
                 existing = self._repo.find_by_idempotency_key(payload.idempotency_key)
                 if existing is not None:
+                    if existing.owner != payload.owner:
+                        from rescs.errors import ForbiddenError
+                        raise ForbiddenError("idempotency owner mismatch", details={})
                     if existing.deleted_at is not None:
                         raise ConflictError(
                             "idempotency key belongs to a deleted file;"
@@ -259,6 +262,9 @@ class FileService:
             if payload.idempotency_key is not None:
                 existing = self._repo.find_by_idempotency_key(payload.idempotency_key)
                 if existing is not None:
+                    if existing.owner != payload.owner:
+                        from rescs.errors import ForbiddenError
+                        raise ForbiddenError("idempotency owner mismatch", details={})
                     if existing.deleted_at is not None:
                         raise ConflictError(
                             "idempotency key belongs to a deleted file;"
@@ -604,3 +610,4 @@ class FileService:
         if self._audit is not None:
             self._audit.log("file.cleanup", resource_type="file", owner=actor)
         return purged
+

@@ -180,3 +180,4 @@ def build_object_store(settings) -> object:
             prefix=settings.s3_path_prefix,
         )
     return LocalObjectStore(settings.storage_dir)
+
