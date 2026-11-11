@@ -4,6 +4,26 @@ All notable changes to R.E.S.C.S. are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `rescs setup` and `rescs doctor` subcommands for first-run configuration
+  and offline diagnostics.
+- Cross-platform release pipeline: wheels plus standalone executables for
+  Windows x64/ARM64, macOS Intel/ARM64 and Linux x64/ARM64, with SHA-256
+  checksums and a CycloneDX SBOM.
+- Machine-readable `compatibility.json`.
+- Platform smoke CI job (Ubuntu, Windows, macOS) running the installed command
+  from an unrelated directory.
+- Documentation: installation, building, releases, security, compatibility.
+
+### Known limitations
+
+- No `.deb`/RPM packaging; portable archives are published instead.
+- Windows ARM64 is experimental; macOS binaries are unsigned unless signing
+  secrets are configured.
+
 ## [0.4.0] - 2026-11-06
 
 ### Added

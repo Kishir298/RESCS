@@ -1,0 +1,190 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Release channel"
+        required: true
+        default: development
+        type: choice
+        options: [stable, beta, development]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate source
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.meta.outputs.channel }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Derive version and channel
+        id: meta
+        env:
+          INPUT_CHANNEL: ${{ inputs.channel }}
+        run: |
+          python - <<'PY'
+          import json, os, re, tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          ref = os.environ.get("GITHUB_REF_NAME", "")
+          if ref.startswith("v"):
+              tag_version = re.split(r"-(stable|beta)", ref[1:])[0]
+              if tag_version != version:
+                  raise SystemExit(f"Tag {ref} does not match pyproject version {version}")
+          channel = os.environ.get("INPUT_CHANNEL") or ("beta" if "-beta" in ref else "stable")
+          prerelease = "true" if channel != "stable" or "-" in ref else "false"
+          if json.loads(Path("compatibility.json").read_text())["version"] != version:
+              raise SystemExit("compatibility.json version is out of date")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as fh:
+              fh.write(f"version={version}\nchannel={channel}\nprerelease={prerelease}\n")
+          PY
+      - name: Install and test
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -e .
+          python -m pip install ruff
+          ruff check --select F src tests
+          python -m pytest -q --tb=no
+
+  wheel:
+    name: Python wheel
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip build
+      - run: python -m build --wheel --sdist
+      - name: Rename wheel artifacts
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          mkdir -p artifacts
+          cp dist/*.whl "artifacts/RESCS-${VERSION}-python-wheel.whl"
+          cp dist/*.tar.gz "artifacts/RESCS-${VERSION}-python-sdist.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RESCS-${{ needs.validate.outputs.version }}-python
+          path: artifacts/*
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-2022, platform: windows, arch: x64 }
+          - { os: windows-11-arm, platform: windows, arch: arm64, experimental: true }
+          - { os: macos-15-intel, platform: macos, arch: x86_64 }
+          - { os: macos-14, platform: macos, arch: arm64 }
+          - { os: ubuntu-22.04, platform: linux, arch: x64 }
+          - { os: ubuntu-24.04-arm, platform: linux, arch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pyinstaller
+      - name: Build standalone executable
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --name rescs \
+            --collect-submodules rescs --collect-data rescs \
+            --distpath dist scripts/standalone_entry.py
+      - name: Package artifact
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          if [ "$PLATFORM" = "windows" ]; then
+            (cd dist && 7z a "../artifacts/RESCS-${VERSION}-${PLATFORM}-${ARCH}.zip" rescs.exe)
+          else
+            tar -czf "artifacts/RESCS-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" -C dist rescs
+          fi
+      - name: Generate SHA-256 checksum
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          if [ "$PLATFORM" = "windows" ]; then
+            sha256sum "RESCS-${VERSION}-${PLATFORM}-${ARCH}.zip" > "RESCS-${VERSION}-${PLATFORM}-${ARCH}.zip.sha256"
+          else
+            sha256sum "RESCS-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" > "RESCS-${VERSION}-${PLATFORM}-${ARCH}.tar.gz.sha256"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RESCS-${{ needs.validate.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [validate, build, wheel]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate SBOM
+        run: |
+          python -m pip install --upgrade pip cyclonedx-bom
+          python -m pip install -e .
+          cyclonedx-py environment -o sbom.cdx.json --of JSON
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: RESCS-*
+          merge-multiple: true
+      - name: Collect checksums
+        run: |
+          cd artifacts
+          rm -f SHA256SUMS
+          sha256sum * > SHA256SUMS
+          cp ../sbom.cdx.json .
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          CHANNEL: ${{ needs.validate.outputs.channel }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=(--title "RESCS ${VERSION} (${CHANNEL})" --notes "Automated ${CHANNEL} release for RESCS ${VERSION}.")
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "${GITHUB_REF_NAME}" artifacts/* "${flags[@]}"

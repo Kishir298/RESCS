@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "project": "RESCS",
+  "display_name": "R.E.S.C.S. — Rishik's Efficient System for Cloud Storage",
+  "version": "0.4.0",
+  "release_channel": "stable",
+  "standalone": true,
+  "requires_core": false,
+  "supported_operating_systems": [
+    {
+      "os": "windows",
+      "architectures": ["x86_64", "arm64"],
+      "minimum_version": "10 22H2",
+      "notes": "Runs as a user-level service; no Raspberry Pi required."
+    },
+    {
+      "os": "macos",
+      "architectures": ["x86_64", "arm64"],
+      "minimum_version": "12.0",
+      "notes": "Apple Silicon and Intel packages are built separately."
+    },
+    {
+      "os": "linux",
+      "architectures": ["x86_64", "arm64"],
+      "minimum_version": "glibc 2.28",
+      "notes": "Debian packages target systemd installs."
+    }
+  ],
+  "runtime": {
+    "kind": "python",
+    "minimum_version": "3.11",
+    "console_scripts": ["rescs"],
+    "install_methods": ["pip", "pipx", "standalone-executable", "debian-package"]
+  },
+  "api": {
+    "version": "v1",
+    "contract_endpoint": "/api/v1/contract",
+    "auth": "X-API-Key"
+  },
+  "core_integration": {
+    "optional": true,
+    "protocol_versions": ["0.3.0", "0.4.0"],
+    "enable_env": "RESCS_CORE_ENABLED",
+    "offline_fallback": true
+  },
+  "integrations": ["core-host", "asis", "tiviss", "s3"],
+  "build_metadata": {
+    "builder": "GitHub Actions",
+    "artifact_naming": "RESCS-{version}-{os}-{arch}-{format}",
+    "checksums": "SHA-256",
+    "sbom": "CycloneDX JSON"
+  }
+}
