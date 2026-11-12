@@ -44,6 +44,14 @@ device.json
 
 # Local data
 *.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 rescs_dev.db
 rescs_dev.db-*
 rescs_*_storage/
