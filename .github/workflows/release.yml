@@ -59,7 +59,7 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip install -e .
           python -m pip install ruff
-          ruff check --select F src tests
+          ruff check --select E9,F,I src tests
           python -m pytest -q --tb=no
 
   wheel:

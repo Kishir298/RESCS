@@ -29,3 +29,6 @@ rescs = ["py.typed"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra"
+
+[tool.ruff.lint]
+select = ["E9", "F", "I"]
