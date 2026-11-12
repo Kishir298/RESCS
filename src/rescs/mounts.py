@@ -1,6 +1,7 @@
 """Fail closed instead of creating a new database on an unmounted SD card."""
-from pathlib import Path
 import os
+from pathlib import Path
+
 from sqlalchemy.engine import make_url
 
 

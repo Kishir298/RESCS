@@ -145,7 +145,6 @@ class RecordService:
     def _check_bulk_owner(self, resource_owner: str) -> None:
         """Enforce single-owner lock inside bulk batches (per-item 403)."""
         from rescs.errors import ForbiddenError
-
         from rescs.gateway_scope import current_owner
         locked = current_owner.get() or (self._settings.api_key_owner if self._settings else "")
         if locked and resource_owner != locked:

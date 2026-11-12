@@ -68,7 +68,6 @@ class UploadService:
 
     def _check_owner_locked(self, resource_owner: str) -> None:
         from rescs.errors import ForbiddenError
-
         from rescs.gateway_scope import current_owner
         locked = current_owner.get() or (self._settings.api_key_owner if self._settings else "")
         if locked and resource_owner != locked:

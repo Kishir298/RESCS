@@ -1,9 +1,9 @@
 """Installed launcher; uvicorn factory entrypoint stays compatible."""
 import argparse
 import os
-from pathlib import Path
 import secrets
 import sys
+from pathlib import Path
 
 
 def data_directory():
@@ -48,8 +48,9 @@ def main(argv=None):
         url = make_url(settings.database_url)
         if url.get_backend_name() == 'sqlite' and url.database != ':memory:':
             Path(url.database).parent.mkdir(parents=True, exist_ok=True)
-        from rescs.main import create_app
         import uvicorn
+
+        from rescs.main import create_app
         uvicorn.run(create_app(settings), host=args.host, port=args.port)
         return 0
     except FileExistsError:
