@@ -5,6 +5,8 @@ import secrets
 import sys
 from pathlib import Path
 
+from pydantic import ValidationError
+
 
 def data_directory():
     if sys.platform == 'win32':
@@ -56,6 +58,16 @@ def main(argv=None):
     except FileExistsError:
         print('Configuration already exists; preserved.')
         return 0
+    except ValidationError as exc:
+        # Keep configuration strict, but map the failure to an actionable message.
+        details = '; '.join(
+            f"{'.'.join(str(part) for part in error['loc']) or 'configuration'}: {error['msg']}"
+            for error in exc.errors()
+        )
+        print(f'RESCS configuration is invalid: {details}', file=sys.stderr)
+        if not config.exists():
+            print(f'No configuration file at {config}. Run `rescs setup --config {config}` first.', file=sys.stderr)
+        return 2
     except Exception as exc:
         print(f'RESCS failed ({type(exc).__name__}); check configuration and storage. No fallback used.', file=sys.stderr)
         return 2

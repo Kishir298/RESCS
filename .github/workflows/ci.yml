@@ -44,4 +44,7 @@ jobs:
         shell: bash
         run: |
           rescs --help
-          rescs doctor
+          # `doctor` validates configuration strictly, so create a first-run
+          # config exactly as an operator would before diagnosing it.
+          rescs setup --config "$RUNNER_TEMP/rescs-smoke.env"
+          rescs --config "$RUNNER_TEMP/rescs-smoke.env" doctor
