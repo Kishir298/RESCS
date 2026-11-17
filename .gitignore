@@ -97,3 +97,11 @@ secrets/
 *.priv
 private-key*
 release-keys/
+
+# Default runtime storage (rescs_*_storage/ does not match this path)
+rescs_storage/
+rescs_test_storage/
+rescs_storage_test/
+
+# CLI-generated private configuration (may contain RESCS_API_KEY)
+rescs.env
