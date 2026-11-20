@@ -39,13 +39,17 @@ def settings() -> Settings:
 
 
 @pytest.fixture()
-def app(settings: Settings):
+def app(settings: Settings, tmp_path):
     # Use memory storage backend for test isolation
     test_settings = Settings(
         _env_file=None,
         api_key=settings.api_key,
         api_key_owner=settings.api_key_owner,
-        database_url=settings.database_url,
+        # File-backed SQLite per test: :memory: + StaticPool shares one
+        # connection across threads, and concurrent writers tear rows mid-read
+        # on that shared connection (ValueError: Invalid isoformat string).
+        # A file URL gives each request thread its own pooled connection.
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'rescs_test.db'}",
         storage_dir=settings.storage_dir,
         storage_backend="memory",
         environment=settings.environment,
@@ -88,12 +92,13 @@ SCOPED_OWNER = "tenant-a"
 
 
 @pytest.fixture()
-def scoped_app(settings: Settings):
+def scoped_app(settings: Settings, tmp_path):
     scoped_settings = Settings(
         _env_file=None,
         api_key=SCOPED_API_KEY,
         api_key_owner=SCOPED_OWNER,
-        database_url="sqlite+pysqlite:///:memory:",
+        # Same rationale as app fixture: per-test file DB, own connection/thread.
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'rescs_scoped_test.db'}",
         storage_dir="rescs_test_storage",
         storage_backend="memory",
         environment="test",
